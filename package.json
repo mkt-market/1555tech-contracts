@@ -1,12 +1,12 @@
 {
-  "name": "canto-pfp-protocol",
+  "name": "atrium-bondingcurve-1155",
   "author": "mkt.market",
   "version": "1.0.0",
-  "description": "Canto PFP Protocol",
-  "homepage": "https://github.com/mkt-market/canto-pfp-protocol#readme",
+  "description": "Atribum Bondingcurve ERC1155 Tokens",
+  "homepage": "https://github.com/mkt-market/atrium-bondingcurve-1155#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mkt-market/canto-pfp-protocol.git"
+    "url": "git+https://github.com/mkt-market/atrium-bondingcurve-1155.git"
   },
   "scripts": {
     "prettier": "prettier --write 'src/**/*.sol'",
