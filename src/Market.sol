@@ -89,8 +89,8 @@ contract Market is ERC1155, Ownable2Step {
         (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getBuyPriceAndFee(tokenCount[_id], _amount);
         require(msg.value >= price + fee, "Not enough funds sent");
         // Split the fee among holder, creator and platform
-        uint256 shareHolderFee = fee * HOLDER_CUT_BPS / 100_000;
-        uint256 shareCreatorFee = fee * CREATOR_CUT_BPS / 100_000;
+        uint256 shareHolderFee = (fee * HOLDER_CUT_BPS) / 100_000;
+        uint256 shareCreatorFee = (fee * CREATOR_CUT_BPS) / 100_000;
         uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
         shareHolderPool[_id] += shareHolderFee;
         shareCreatorPool[_id] += shareCreatorFee;
@@ -113,8 +113,8 @@ contract Market is ERC1155, Ownable2Step {
         require(bondingCurve != address(0), "Share does not exist");
         (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getSellPriceAndFee(tokenCount[_id], _amount);
         // Split the fee among holder, creator and platform
-        uint256 shareHolderFee = fee * HOLDER_CUT_BPS / 100_000;
-        uint256 shareCreatorFee = fee * CREATOR_CUT_BPS / 100_000;
+        uint256 shareHolderFee = (fee * HOLDER_CUT_BPS) / 100_000;
+        uint256 shareCreatorFee = (fee * CREATOR_CUT_BPS) / 100_000;
         uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
         shareHolderPool[_id] += shareHolderFee;
         shareCreatorPool[_id] += shareCreatorFee;
