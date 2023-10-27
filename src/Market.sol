@@ -48,6 +48,7 @@ contract Market is ERC1155, Ownable2Step {
 
     function createNewShare(string memory _shareName, address _bondingCurve) external returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
+        require(shareIDs[_shareName] == 0, "Share already exists");
         id = ++shareCount;
         shareIDs[_shareName] = id;
         shareBondingCurves[id] = _bondingCurve;
