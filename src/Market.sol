@@ -126,7 +126,10 @@ contract Market is ERC1155, Ownable2Step {
 
     function mintNFT(uint256 _id, uint256 _amount) external payable {
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(
+            shareData[_id].tokenCount,
+            1
+        );
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
         require(msg.value >= price + fee, "Not enough funds sent");
@@ -144,7 +147,10 @@ contract Market is ERC1155, Ownable2Step {
 
     function burnNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(
+            shareData[_id].tokenCount,
+            1
+        );
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
         _splitFees(_id, fee);
