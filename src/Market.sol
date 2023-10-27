@@ -28,10 +28,12 @@ contract Market is ERC1155, Ownable2Step {
     struct ShareData {
         uint256 tokenCount; // Number of outstanding tokens
         uint256 shareHolderPool; // Accrued funds for the share holder
-        uint256 shareCreatorPool; // Accrued funds for the share creators
+        uint256 shareCreatorPool; // Unclaimed funds for the share creators
         address bondingCurve; // Bonding curve used for this share
+        address creator; // Creator of the share
     }
 
+    /// @notice Stores the data for a given share ID
     mapping(uint256 => ShareData) public shareData;
 
     /// @notice Stores the bonding curve per share
@@ -80,6 +82,7 @@ contract Market is ERC1155, Ownable2Step {
         id = ++shareCount;
         shareIDs[_shareName] = id;
         shareData[id].bondingCurve = _bondingCurve;
+        shareData[id].creator = msg.sender;
         emit ShareCreated(id, _shareName, _bondingCurve);
     }
 
@@ -155,6 +158,15 @@ contract Market is ERC1155, Ownable2Step {
     function claimPlatformFee() external onlyOwner {
         uint256 amount = platformPool;
         platformPool = 0;
+        _sendFunds(msg.sender, amount);
+    }
+
+    /// @notice Withdraws the accrued share creator fee
+    /// @param _id ID of the share
+    function claimCreatorFee(uint256 _id) external {
+        require(shareData[_id].creator == msg.sender, "Not creator");
+        uint256 amount = shareData[_id].shareCreatorPool;
+        shareData[_id].shareCreatorPool = 0;
         _sendFunds(msg.sender, amount);
     }
 
