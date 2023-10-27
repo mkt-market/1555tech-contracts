@@ -34,6 +34,9 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Stores the number of outstanding tokens per share
     mapping(uint256 => uint256) public tokenCount;
 
+    /// @notice Stores the number of outstanding tokens per share and address
+    mapping(uint256 => mapping(address => uint256)) public tokensByAddress;
+
     /// @notice Accrued funds for the share holder
     mapping(uint256 => uint256) public shareHolderPool;
 
@@ -84,19 +87,15 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
     function buy(uint256 _id, uint256 _amount) external payable {
+        // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareBondingCurves[_id];
-        require(bondingCurve != address(0), "Share does not exist");
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getBuyPriceAndFee(tokenCount[_id], _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], _amount);
         require(msg.value >= price + fee, "Not enough funds sent");
         // Split the fee among holder, creator and platform
-        uint256 shareHolderFee = (fee * HOLDER_CUT_BPS) / 100_000;
-        uint256 shareCreatorFee = (fee * CREATOR_CUT_BPS) / 100_000;
-        uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
-        shareHolderPool[_id] += shareHolderFee;
-        shareCreatorPool[_id] += shareCreatorFee;
-        platformPool += platformFee;
+        _splitFees(_id, fee);
 
         tokenCount[_id] += _amount;
+        tokensByAddress[_id][msg.sender] += _amount;
 
         // Refund the user if they sent too much
         uint256 difference = msg.value - price - fee;
@@ -109,21 +108,56 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _id ID of the share
     /// @param _amount Amount of shares to sell
     function sell(uint256 _id, uint256 _amount) external {
+        // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareBondingCurves[_id];
-        require(bondingCurve != address(0), "Share does not exist");
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getSellPriceAndFee(tokenCount[_id], _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], _amount);
         // Split the fee among holder, creator and platform
-        uint256 shareHolderFee = (fee * HOLDER_CUT_BPS) / 100_000;
-        uint256 shareCreatorFee = (fee * CREATOR_CUT_BPS) / 100_000;
-        uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
+        _splitFees(_id, fee);
+
+        tokenCount[_id] -= _amount;
+        tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
+
+        // Send the funds to the user
+        _sendFunds(msg.sender, price - fee);
+    }
+
+    function mintNFT(uint256 _id, uint256 _amount) external payable {
+        address bondingCurve = shareBondingCurves[_id];
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], 1);
+        uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        uint256 fee = feeForOne * _amount;
+        require(msg.value >= price + fee, "Not enough funds sent");
+        _splitFees(_id, fee);
+        tokensByAddress[_id][msg.sender] -= _amount;
+
+        _mint(msg.sender, _id, _amount, "");
+
+        // Refund the user if they sent too much
+        uint256 difference = msg.value - price - fee;
+        if (difference > 0) {
+            _sendFunds(msg.sender, difference);
+        }
+    }
+
+    function burnNFT(uint256 _id, uint256 _amount) external {
+        address bondingCurve = shareBondingCurves[_id];
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], 1);
+        uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        uint256 fee = feeForOne * _amount;
+        _splitFees(_id, fee);
+        tokensByAddress[_id][msg.sender] += _amount;
+        _burn(msg.sender, _id, _amount);
+
+        _sendFunds(msg.sender, price - fee);
+    }
+
+    function _splitFees(uint256 _id, uint256 _fee) internal {
+        uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 100_000;
+        uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 100_000;
+        uint256 platformFee = _fee - shareHolderFee - shareCreatorFee;
         shareHolderPool[_id] += shareHolderFee;
         shareCreatorPool[_id] += shareCreatorFee;
         platformPool += platformFee;
-
-        tokenCount[_id] -= _amount;
-
-        // Send the funds to the user
-        _sendFunds(msg.sender, price);
     }
 
     function _sendFunds(address _to, uint256 _amount) internal {
