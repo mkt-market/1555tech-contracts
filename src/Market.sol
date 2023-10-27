@@ -105,6 +105,27 @@ contract Market is ERC1155, Ownable2Step {
         }
     }
 
+    /// @notice Sell amount of tokens for a given share ID
+    /// @param _id ID of the share
+    /// @param _amount Amount of shares to sell
+    function sell(uint256 _id, uint256 _amount) external {
+        address bondingCurve = shareBondingCurves[_id];
+        require(bondingCurve != address(0), "Share does not exist");
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getSellPriceAndFee(tokenCount[_id], _amount);
+        // Split the fee among holder, creator and platform
+        uint256 shareHolderFee = fee * HOLDER_CUT_BPS / 100_000;
+        uint256 shareCreatorFee = fee * CREATOR_CUT_BPS / 100_000;
+        uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
+        shareHolderPool[_id] += shareHolderFee;
+        shareCreatorPool[_id] += shareCreatorFee;
+        platformPool += platformFee;
+
+        tokenCount[_id] -= _amount;
+
+        // Send the funds to the user
+        _sendFunds(msg.sender, price);
+    }
+
     function _sendFunds(address _to, uint256 _amount) internal {
         (bool success, ) = _to.call{value: _amount}("");
         require(success, "Transfer failed");
