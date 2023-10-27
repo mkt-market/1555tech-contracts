@@ -49,7 +49,7 @@ contract Market is ERC1155, Ownable2Step {
     mapping(uint256 => mapping(address => uint256)) public rewardsLastClaimedValue;
 
     /// @notice Unclaimed funds for the platform
-    uint256 platformPool;
+    uint256 public platformPool;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
