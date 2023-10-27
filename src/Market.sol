@@ -3,9 +3,18 @@ pragma solidity >=0.8.0;
 
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {IBondingCurve} from "../interface/IBondingCurve.sol";
 import {Turnstile} from "../interface/Turnstile.sol";
 
 contract Market is ERC1155, Ownable2Step {
+    /*//////////////////////////////////////////////////////////////
+                                 CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+    uint256 public constant NFT_FEE_BPS = 1_000; // 10%
+    uint256 public constant HOLDER_CUT_BPS = 33_000; // 33%
+    uint256 public constant CREATOR_CUT_BPS = 33_000; // 33%
+    // Platform cut: 100% - HOLDER_CUT_BPS - CREATOR_CUT_BPS
+
     /*//////////////////////////////////////////////////////////////
                                  STATE
     //////////////////////////////////////////////////////////////*/
@@ -22,6 +31,18 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) whitelistedBondingCurves;
 
+    /// @notice Stores the number of outstanding tokens per share
+    mapping(uint256 => uint256) public tokenCount;
+
+    /// @notice Accrued funds for the share holder
+    mapping(uint256 => uint256) public shareHolderPool;
+
+    /// @notice Accrued funds for the share creators
+    mapping(uint256 => uint256) public shareCreatorPool;
+
+    /// @notice Unclaimed funds for the platform
+    uint256 platformPool;
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -37,7 +58,8 @@ contract Market is ERC1155, Ownable2Step {
         }
     }
 
-    /// @notice Whitelist or remove whitelist for a bonding curve
+    /// @notice Whitelist or remove whitelist for a bonding curve.
+    /// @dev Whitelisting status is only checked when adding a share
     /// @param _bondingCurve Address of the bonding curve
     /// @param _newState True if whitelisted, false if not
     function changeBondingCurveAllowed(address _bondingCurve, bool _newState) external onlyOwner {
@@ -46,6 +68,9 @@ contract Market is ERC1155, Ownable2Step {
         emit BondingCurveStateChange(_bondingCurve, _newState);
     }
 
+    /// @notice Creates a new share
+    /// @param _shareName Name of the share
+    /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
     function createNewShare(string memory _shareName, address _bondingCurve) external returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
@@ -53,5 +78,35 @@ contract Market is ERC1155, Ownable2Step {
         shareIDs[_shareName] = id;
         shareBondingCurves[id] = _bondingCurve;
         emit ShareCreated(id, _shareName, _bondingCurve);
+    }
+
+    /// @notice Buy amount of tokens for a given share ID
+    /// @param _id ID of the share
+    /// @param _amount Amount of shares to buy
+    function buy(uint256 _id, uint256 _amount) external payable {
+        address bondingCurve = shareBondingCurves[_id];
+        require(bondingCurve != address(0), "Share does not exist");
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getBuyPriceAndFee(tokenCount[_id], _amount);
+        require(msg.value >= price + fee, "Not enough funds sent");
+        // Split the fee among holder, creator and platform
+        uint256 shareHolderFee = fee * HOLDER_CUT_BPS / 100_000;
+        uint256 shareCreatorFee = fee * CREATOR_CUT_BPS / 100_000;
+        uint256 platformFee = fee - shareHolderFee - shareCreatorFee;
+        shareHolderPool[_id] += shareHolderFee;
+        shareCreatorPool[_id] += shareCreatorFee;
+        platformPool += platformFee;
+
+        tokenCount[_id] += _amount;
+
+        // Refund the user if they sent too much
+        uint256 difference = msg.value - price - fee;
+        if (difference > 0) {
+            _sendFunds(msg.sender, difference);
+        }
+    }
+
+    function _sendFunds(address _to, uint256 _amount) internal {
+        (bool success, ) = _to.call{value: _amount}("");
+        require(success, "Transfer failed");
     }
 }
