@@ -151,6 +151,14 @@ contract Market is ERC1155, Ownable2Step {
         _sendFunds(msg.sender, price - fee);
     }
 
+    /// @notice Withdraws the accrued platform fee
+    function claimPlatformFee() external onlyOwner {
+        uint256 amount = platformPool;
+        platformPool = 0;
+        _sendFunds(msg.sender, amount);
+    }
+
+    /// @notice Splits the fee among the share holder, creator and platform
     function _splitFees(uint256 _id, uint256 _fee) internal {
         uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 100_000;
         uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 100_000;
