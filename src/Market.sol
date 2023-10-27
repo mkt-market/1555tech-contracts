@@ -56,6 +56,13 @@ contract Market is ERC1155, Ownable2Step {
     //////////////////////////////////////////////////////////////*/
     event BondingCurveStateChange(address indexed curve, bool isWhitelisted);
     event ShareCreated(uint256 indexed id, string name, address indexed bondingCurve);
+    event SharesBought(uint256 indexed id, address indexed buyer, uint256 amount, uint256 price, uint256 fee);
+    event SharesSold(uint256 indexed id, address indexed seller, uint256 amount, uint256 price, uint256 fee);
+    event NFTsCreated(uint256 indexed id, address indexed creator, uint256 amount, uint256 price, uint256 fee);
+    event NFTsBurned(uint256 indexed id, address indexed burner, uint256 amount, uint256 price, uint256 fee);
+    event PlatformFeeClaimed(address indexed claimer, uint256 amount);
+    event CreatorFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
+    event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
 
     /// @notice Initiates CSR on main- and testnet
     constructor(string memory _uri) ERC1155(_uri) Ownable(msg.sender) {
@@ -114,6 +121,7 @@ contract Market is ERC1155, Ownable2Step {
         if (rewardsSinceLastClaim > 0) {
             _sendFunds(msg.sender, rewardsSinceLastClaim);
         }
+        emit SharesBought(_id, msg.sender, _amount, price, fee);
     }
 
     /// @notice Sell amount of tokens for a given share ID
@@ -135,6 +143,7 @@ contract Market is ERC1155, Ownable2Step {
 
         // Send the funds to the user
         _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
+        emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
     function mintNFT(uint256 _id, uint256 _amount) external payable {
@@ -158,6 +167,8 @@ contract Market is ERC1155, Ownable2Step {
         if (rewardsSinceLastClaim > 0) {
             _sendFunds(msg.sender, rewardsSinceLastClaim);
         }
+        // ERC1155 already logs, but we add this to have the price information
+        emit NFTsCreated(_id, msg.sender, _amount, price, fee);
     }
 
     function burnNFT(uint256 _id, uint256 _amount) external {
@@ -174,6 +185,8 @@ contract Market is ERC1155, Ownable2Step {
         _burn(msg.sender, _id, _amount);
 
         _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
+        // ERC1155 already logs, but we add this to have the price information
+        emit NFTsBurned(_id, msg.sender, _amount, price, fee);
     }
 
     /// @notice Withdraws the accrued platform fee
@@ -181,6 +194,7 @@ contract Market is ERC1155, Ownable2Step {
         uint256 amount = platformPool;
         platformPool = 0;
         _sendFunds(msg.sender, amount);
+        emit PlatformFeeClaimed(msg.sender, amount);
     }
 
     /// @notice Withdraws the accrued share creator fee
@@ -190,6 +204,7 @@ contract Market is ERC1155, Ownable2Step {
         uint256 amount = shareData[_id].shareCreatorPool;
         shareData[_id].shareCreatorPool = 0;
         _sendFunds(msg.sender, amount);
+        emit CreatorFeeClaimed(msg.sender, _id, amount);
     }
 
     function claimHolderFee(uint256 _id) external {
@@ -198,6 +213,7 @@ contract Market is ERC1155, Ownable2Step {
         if (amount > 0) {
             _sendFunds(msg.sender, amount);
         }
+        emit HolderFeeClaimed(msg.sender, _id, amount);
     }
 
     function _getRewardsSinceLastClaim(uint256 _id) internal view returns (uint256 amount) {
