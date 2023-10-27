@@ -25,23 +25,23 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Stores the share ID of a given share name
     mapping(string => uint256) public shareIDs;
 
+    struct ShareData {
+        uint256 tokenCount; // Number of outstanding tokens
+        uint256 shareHolderPool; // Accrued funds for the share holder
+        uint256 shareCreatorPool; // Accrued funds for the share creators
+        address bondingCurve; // Bonding curve used for this share
+    }
+
+    mapping(uint256 => ShareData) public shareData;
+
     /// @notice Stores the bonding curve per share
     mapping(uint256 => address) public shareBondingCurves;
 
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) whitelistedBondingCurves;
 
-    /// @notice Stores the number of outstanding tokens per share
-    mapping(uint256 => uint256) public tokenCount;
-
     /// @notice Stores the number of outstanding tokens per share and address
     mapping(uint256 => mapping(address => uint256)) public tokensByAddress;
-
-    /// @notice Accrued funds for the share holder
-    mapping(uint256 => uint256) public shareHolderPool;
-
-    /// @notice Accrued funds for the share creators
-    mapping(uint256 => uint256) public shareCreatorPool;
 
     /// @notice Unclaimed funds for the platform
     uint256 platformPool;
@@ -79,7 +79,7 @@ contract Market is ERC1155, Ownable2Step {
         require(shareIDs[_shareName] == 0, "Share already exists");
         id = ++shareCount;
         shareIDs[_shareName] = id;
-        shareBondingCurves[id] = _bondingCurve;
+        shareData[id].bondingCurve = _bondingCurve;
         emit ShareCreated(id, _shareName, _bondingCurve);
     }
 
@@ -88,13 +88,13 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _amount Amount of shares to buy
     function buy(uint256 _id, uint256 _amount) external payable {
         // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareBondingCurves[_id];
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], _amount);
+        address bondingCurve = shareData[_id].bondingCurve;
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, _amount);
         require(msg.value >= price + fee, "Not enough funds sent");
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee);
 
-        tokenCount[_id] += _amount;
+        shareData[_id].tokenCount += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
         // Refund the user if they sent too much
@@ -109,12 +109,12 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _amount Amount of shares to sell
     function sell(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareBondingCurves[_id];
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], _amount);
+        address bondingCurve = shareData[_id].bondingCurve;
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, _amount);
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee);
 
-        tokenCount[_id] -= _amount;
+        shareData[_id].tokenCount -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
         // Send the funds to the user
@@ -122,8 +122,8 @@ contract Market is ERC1155, Ownable2Step {
     }
 
     function mintNFT(uint256 _id, uint256 _amount) external payable {
-        address bondingCurve = shareBondingCurves[_id];
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], 1);
+        address bondingCurve = shareData[_id].bondingCurve;
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
         require(msg.value >= price + fee, "Not enough funds sent");
@@ -140,8 +140,8 @@ contract Market is ERC1155, Ownable2Step {
     }
 
     function burnNFT(uint256 _id, uint256 _amount) external {
-        address bondingCurve = shareBondingCurves[_id];
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount[_id], 1);
+        address bondingCurve = shareData[_id].bondingCurve;
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
         _splitFees(_id, fee);
@@ -163,8 +163,8 @@ contract Market is ERC1155, Ownable2Step {
         uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 100_000;
         uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 100_000;
         uint256 platformFee = _fee - shareHolderFee - shareCreatorFee;
-        shareHolderPool[_id] += shareHolderFee;
-        shareCreatorPool[_id] += shareCreatorFee;
+        shareData[_id].shareHolderPool += shareHolderFee;
+        shareData[_id].shareCreatorPool += shareCreatorFee;
         platformPool += platformFee;
     }
 
