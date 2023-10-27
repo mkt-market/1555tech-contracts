@@ -10,6 +10,15 @@ contract Market is ERC1155, Ownable2Step {
                                  STATE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Number of shares created
+    uint256 public shareCount;
+
+    /// @notice Stores the share ID of a given share name
+    mapping(string => uint256) public shareIDs;
+
+    /// @notice Stores the bonding curve per share
+    mapping(uint256 => address) public shareBondingCurves;
+
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) whitelistedBondingCurves;
 
@@ -17,6 +26,7 @@ contract Market is ERC1155, Ownable2Step {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
     event BondingCurveStateChange(address indexed curve, bool isWhitelisted);
+    event ShareCreated(uint256 indexed id, string name, address indexed bondingCurve);
 
     /// @notice Initiates CSR on main- and testnet
     constructor(string memory _uri) ERC1155(_uri) Ownable(msg.sender) {
@@ -34,5 +44,13 @@ contract Market is ERC1155, Ownable2Step {
         require(whitelistedBondingCurves[_bondingCurve] != _newState, "State already set");
         whitelistedBondingCurves[_bondingCurve] = _newState;
         emit BondingCurveStateChange(_bondingCurve, _newState);
+    }
+
+    function createNewShare(string memory _shareName, address _bondingCurve) external returns (uint256 id) {
+        require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
+        id = ++shareCount;
+        shareIDs[_shareName] = id;
+        shareBondingCurves[id] = _bondingCurve;
+        emit ShareCreated(id, _shareName, _bondingCurve);
     }
 }
