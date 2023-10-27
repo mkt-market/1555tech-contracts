@@ -27,7 +27,7 @@ contract Market is ERC1155, Ownable2Step {
 
     struct ShareData {
         uint256 tokenCount; // Number of outstanding tokens
-        uint256 shareHolderPool; // Accrued funds for the share holder
+        uint256 shareHolderRewardsPerTokenScaled; // Accrued funds for the share holder per token, multiplied by 1e18 to avoid precision loss
         uint256 shareCreatorPool; // Unclaimed funds for the share creators
         address bondingCurve; // Bonding curve used for this share
         address creator; // Creator of the share
@@ -44,6 +44,9 @@ contract Market is ERC1155, Ownable2Step {
 
     /// @notice Stores the number of outstanding tokens per share and address
     mapping(uint256 => mapping(address => uint256)) public tokensByAddress;
+
+    /// @notice Value of ShareData.shareHolderRewardsPerTokenScaled at the last time a user claimed their rewards
+    mapping(uint256 => mapping(address => uint256)) public rewardsLastClaimedValue;
 
     /// @notice Unclaimed funds for the platform
     uint256 platformPool;
@@ -92,18 +95,24 @@ contract Market is ERC1155, Ownable2Step {
     function buy(uint256 _id, uint256 _amount) external payable {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, _amount);
+        uint256 tokenCount = shareData[_id].tokenCount;
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, _amount);
         require(msg.value >= price + fee, "Not enough funds sent");
+        // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
+        // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
+        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         // Split the fee among holder, creator and platform
-        _splitFees(_id, fee);
+        _splitFees(_id, fee, tokenCount);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
 
         shareData[_id].tokenCount += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
         // Refund the user if they sent too much
         uint256 difference = msg.value - price - fee;
-        if (difference > 0) {
-            _sendFunds(msg.sender, difference);
+        rewardsSinceLastClaim += difference;
+        if (rewardsSinceLastClaim > 0) {
+            _sendFunds(msg.sender, rewardsSinceLastClaim);
         }
     }
 
@@ -113,51 +122,58 @@ contract Market is ERC1155, Ownable2Step {
     function sell(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, _amount);
+        uint256 tokenCount = shareData[_id].tokenCount;
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, _amount);
         // Split the fee among holder, creator and platform
-        _splitFees(_id, fee);
+        _splitFees(_id, fee, tokenCount);
+        // The user also gets the rewards of his own sale (which is not the case for buys)
+        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
 
         shareData[_id].tokenCount -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
         // Send the funds to the user
-        _sendFunds(msg.sender, price - fee);
+        _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
     }
 
     function mintNFT(uint256 _id, uint256 _amount) external payable {
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(
-            shareData[_id].tokenCount,
-            1
-        );
+        uint256 tokenCount = shareData[_id].tokenCount;
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
         require(msg.value >= price + fee, "Not enough funds sent");
-        _splitFees(_id, fee);
+        _splitFees(_id, fee, tokenCount);
+        // The user also gets the proportional rewards for the minting
+        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         tokensByAddress[_id][msg.sender] -= _amount;
 
         _mint(msg.sender, _id, _amount, "");
 
         // Refund the user if they sent too much
         uint256 difference = msg.value - price - fee;
-        if (difference > 0) {
-            _sendFunds(msg.sender, difference);
+        rewardsSinceLastClaim += difference;
+        if (rewardsSinceLastClaim > 0) {
+            _sendFunds(msg.sender, rewardsSinceLastClaim);
         }
     }
 
     function burnNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(
-            shareData[_id].tokenCount,
-            1
-        );
+        uint256 tokenCount = shareData[_id].tokenCount;
+        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
-        _splitFees(_id, fee);
+        _splitFees(_id, fee, tokenCount);
+        // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
+        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         tokensByAddress[_id][msg.sender] += _amount;
         _burn(msg.sender, _id, _amount);
 
-        _sendFunds(msg.sender, price - fee);
+        _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
     }
 
     /// @notice Withdraws the accrued platform fee
@@ -176,13 +192,37 @@ contract Market is ERC1155, Ownable2Step {
         _sendFunds(msg.sender, amount);
     }
 
+    function claimHolderFee(uint256 _id) external {
+        uint256 amount = _getRewardsSinceLastClaim(_id);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        if (amount > 0) {
+            _sendFunds(msg.sender, amount);
+        }
+    }
+
+    function _getRewardsSinceLastClaim(uint256 _id) internal view returns (uint256 amount) {
+        uint256 lastClaimedValue = rewardsLastClaimedValue[_id][msg.sender];
+        amount =
+            ((shareData[_id].shareHolderRewardsPerTokenScaled - lastClaimedValue) * tokensByAddress[_id][msg.sender]) /
+            1e18;
+    }
+
     /// @notice Splits the fee among the share holder, creator and platform
-    function _splitFees(uint256 _id, uint256 _fee) internal {
+    function _splitFees(
+        uint256 _id,
+        uint256 _fee,
+        uint256 _tokenCount
+    ) internal {
         uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 100_000;
         uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 100_000;
         uint256 platformFee = _fee - shareHolderFee - shareCreatorFee;
-        shareData[_id].shareHolderPool += shareHolderFee;
         shareData[_id].shareCreatorPool += shareCreatorFee;
+        if (_tokenCount > 0) {
+            shareData[_id].shareHolderRewardsPerTokenScaled += (shareHolderFee * 1e18) / _tokenCount;
+        } else {
+            // On the first buy, no share holders exist yet, so the fee goes to the platform
+            platformFee += shareHolderFee;
+        }
         platformPool += platformFee;
     }
 
