@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-pragma solidity >=0.8.0;
+pragma solidity 0.8.19;
 
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
@@ -65,7 +65,7 @@ contract Market is ERC1155, Ownable2Step {
     event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
 
     /// @notice Initiates CSR on main- and testnet
-    constructor(string memory _uri) ERC1155(_uri) Ownable(msg.sender) {
+    constructor(string memory _uri) ERC1155(_uri) Ownable() {
         if (block.chainid == 7700 || block.chainid == 7701) {
             // Register CSR on Canto main- and testnet
             Turnstile turnstile = Turnstile(0xEcf044C5B4b867CFda001101c617eCd347095B44);
