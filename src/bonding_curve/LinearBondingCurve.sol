@@ -4,19 +4,23 @@ pragma solidity 0.8.19;
 import {IBondingCurve} from "../../interface/IBondingCurve.sol";
 
 contract LinearBondingCurve is IBondingCurve {
-    
     // By how much the price increases per share, provided in the token decimals
-    uint256 immutable public priceIncrease;
+    uint256 public immutable priceIncrease;
 
     constructor(uint256 _priceIncrease) {
         priceIncrease = _priceIncrease;
     }
 
-    function getPriceAndFee(uint256 shareCount, uint256 amount) external view override returns (uint256 price, uint256 fee) {
+    function getPriceAndFee(uint256 shareCount, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 price, uint256 fee)
+    {
         for (uint256 i = shareCount; i < shareCount + amount; i++) {
             uint256 tokenPrice = priceIncrease * i;
             price += tokenPrice;
-            fee += getFee(i) * tokenPrice / 1e18;
+            fee += (getFee(i) * tokenPrice) / 1e18;
         }
     }
 
@@ -44,8 +48,13 @@ contract LinearBondingCurve is IBondingCurve {
             r := or(r, shl(4, lt(0xffff, shr(r, x))))
             r := or(r, shl(3, lt(0xff, shr(r, x))))
             // forgefmt: disable-next-item
-            r := or(r, byte(and(0x1f, shr(shr(r, x), 0x8421084210842108cc6318c6db6d54be)),
-                0x0706060506020504060203020504030106050205030304010505030400000000))
+            r := or(
+                r,
+                byte(
+                    and(0x1f, shr(shr(r, x), 0x8421084210842108cc6318c6db6d54be)),
+                    0x0706060506020504060203020504030106050205030304010505030400000000
+                )
+            )
         }
     }
 }

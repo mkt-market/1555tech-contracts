@@ -17,7 +17,7 @@ contract Market is ERC1155, Ownable2Step {
     // Platform cut: 100% - HOLDER_CUT_BPS - CREATOR_CUT_BPS
 
     /// @notice Payment token
-    IERC20 immutable public token;
+    IERC20 public immutable token;
 
     /*//////////////////////////////////////////////////////////////
                                  STATE
@@ -76,7 +76,10 @@ contract Market is ERC1155, Ownable2Step {
     event ShareCreationRestricted(bool isRestricted);
 
     modifier onlyShareCreator() {
-        require(!shareCreationRestricted || whitelistedShareCreators[msg.sender] || msg.sender == owner(), "Not allowed");
+        require(
+            !shareCreationRestricted || whitelistedShareCreators[msg.sender] || msg.sender == owner(),
+            "Not allowed"
+        );
         _;
     }
 
@@ -105,7 +108,11 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Creates a new share
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
-    function createNewShare(string memory _shareName, address _bondingCurve) external onlyShareCreator returns (uint256 id) {
+    function createNewShare(string memory _shareName, address _bondingCurve)
+        external
+        onlyShareCreator
+        returns (uint256 id)
+    {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
         id = ++shareCount;
@@ -168,7 +175,7 @@ contract Market is ERC1155, Ownable2Step {
         uint256 tokenCount = shareData[_id].tokenCount;
         (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
         uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
-        
+
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, tokenCount);
         // The user also gets the proportional rewards for the minting
@@ -177,7 +184,6 @@ contract Market is ERC1155, Ownable2Step {
         tokensByAddress[_id][msg.sender] -= _amount;
 
         _mint(msg.sender, _id, _amount, "");
-
 
         if (rewardsSinceLastClaim > 0) {
             SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
