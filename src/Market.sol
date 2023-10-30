@@ -122,7 +122,7 @@ contract Market is ERC1155, Ownable2Step {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
         uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount + 1, _amount);
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
