@@ -55,6 +55,12 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Unclaimed funds for the platform
     uint256 public platformPool;
 
+    /// @notice If true, only the whitelisted addresses can create shares
+    bool public shareCreationRestricted = true;
+
+    /// @notice List of addresses that can add new shares when shareCreationRestricted is true
+    mapping(address => bool) public whitelistedShareCreators;
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -67,6 +73,12 @@ contract Market is ERC1155, Ownable2Step {
     event PlatformFeeClaimed(address indexed claimer, uint256 amount);
     event CreatorFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
     event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
+    event ShareCreationRestricted(bool isRestricted);
+
+    modifier onlyShareCreator() {
+        require(!shareCreationRestricted || whitelistedShareCreators[msg.sender] || msg.sender == owner(), "Not allowed");
+        _;
+    }
 
     /// @notice Initiates CSR on main- and testnet
     /// @param _uri ERC1155 Base URI
@@ -93,7 +105,7 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Creates a new share
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
-    function createNewShare(string memory _shareName, address _bondingCurve) external returns (uint256 id) {
+    function createNewShare(string memory _shareName, address _bondingCurve) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
         id = ++shareCount;
@@ -243,5 +255,13 @@ contract Market is ERC1155, Ownable2Step {
             platformFee += shareHolderFee;
         }
         platformPool += platformFee;
+    }
+
+    /// @notice Restricts or unrestricts share creation
+    /// @param _isRestricted True if restricted, false if not
+    function restrictShareCreation(bool _isRestricted) external onlyOwner {
+        require(shareCreationRestricted != _isRestricted, "State already set");
+        shareCreationRestricted = _isRestricted;
+        emit ShareCreationRestricted(_isRestricted);
     }
 }
