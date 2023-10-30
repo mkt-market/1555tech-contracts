@@ -2,6 +2,7 @@
 pragma solidity 0.8.19;
 
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IBondingCurve} from "../interface/IBondingCurve.sol";
 import {Turnstile} from "../interface/Turnstile.sol";
@@ -14,6 +15,9 @@ contract Market is ERC1155, Ownable2Step {
     uint256 public constant HOLDER_CUT_BPS = 33_000; // 33%
     uint256 public constant CREATOR_CUT_BPS = 33_000; // 33%
     // Platform cut: 100% - HOLDER_CUT_BPS - CREATOR_CUT_BPS
+
+    /// @notice Payment token
+    IERC20 immutable public token;
 
     /*//////////////////////////////////////////////////////////////
                                  STATE
@@ -65,7 +69,10 @@ contract Market is ERC1155, Ownable2Step {
     event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
 
     /// @notice Initiates CSR on main- and testnet
-    constructor(string memory _uri) ERC1155(_uri) Ownable() {
+    /// @param _uri ERC1155 Base URI
+    /// @param _paymentToken Address of the payment token
+    constructor(string memory _uri, address _paymentToken) ERC1155(_uri) Ownable() {
+        token = IERC20(_paymentToken);
         if (block.chainid == 7700 || block.chainid == 7701) {
             // Register CSR on Canto main- and testnet
             Turnstile turnstile = Turnstile(0xEcf044C5B4b867CFda001101c617eCd347095B44);
@@ -99,12 +106,12 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Buy amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
-    function buy(uint256 _id, uint256 _amount) external payable {
+    function buy(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
         uint256 tokenCount = shareData[_id].tokenCount;
         (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, _amount);
-        require(msg.value >= price + fee, "Not enough funds sent");
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -115,11 +122,8 @@ contract Market is ERC1155, Ownable2Step {
         shareData[_id].tokenCount += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
-        // Refund the user if they sent too much
-        uint256 difference = msg.value - price - fee;
-        rewardsSinceLastClaim += difference;
         if (rewardsSinceLastClaim > 0) {
-            _sendFunds(msg.sender, rewardsSinceLastClaim);
+            SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         }
         emit SharesBought(_id, msg.sender, _amount, price, fee);
     }
@@ -142,17 +146,18 @@ contract Market is ERC1155, Ownable2Step {
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
         // Send the funds to the user
-        _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
+        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim + price - fee);
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
-    function mintNFT(uint256 _id, uint256 _amount) external payable {
+    function mintNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
         uint256 tokenCount = shareData[_id].tokenCount;
         (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
         uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         uint256 fee = feeForOne * _amount;
-        require(msg.value >= price + fee, "Not enough funds sent");
+        
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         _splitFees(_id, fee, tokenCount);
         // The user also gets the proportional rewards for the minting
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -161,11 +166,9 @@ contract Market is ERC1155, Ownable2Step {
 
         _mint(msg.sender, _id, _amount, "");
 
-        // Refund the user if they sent too much
-        uint256 difference = msg.value - price - fee;
-        rewardsSinceLastClaim += difference;
+
         if (rewardsSinceLastClaim > 0) {
-            _sendFunds(msg.sender, rewardsSinceLastClaim);
+            SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         }
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsCreated(_id, msg.sender, _amount, price, fee);
@@ -184,7 +187,7 @@ contract Market is ERC1155, Ownable2Step {
         tokensByAddress[_id][msg.sender] += _amount;
         _burn(msg.sender, _id, _amount);
 
-        _sendFunds(msg.sender, rewardsSinceLastClaim + price - fee);
+        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim + price - fee);
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsBurned(_id, msg.sender, _amount, price, fee);
     }
@@ -193,7 +196,7 @@ contract Market is ERC1155, Ownable2Step {
     function claimPlatformFee() external onlyOwner {
         uint256 amount = platformPool;
         platformPool = 0;
-        _sendFunds(msg.sender, amount);
+        SafeERC20.safeTransfer(token, msg.sender, amount);
         emit PlatformFeeClaimed(msg.sender, amount);
     }
 
@@ -203,7 +206,7 @@ contract Market is ERC1155, Ownable2Step {
         require(shareData[_id].creator == msg.sender, "Not creator");
         uint256 amount = shareData[_id].shareCreatorPool;
         shareData[_id].shareCreatorPool = 0;
-        _sendFunds(msg.sender, amount);
+        SafeERC20.safeTransfer(token, msg.sender, amount);
         emit CreatorFeeClaimed(msg.sender, _id, amount);
     }
 
@@ -211,7 +214,7 @@ contract Market is ERC1155, Ownable2Step {
         uint256 amount = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         if (amount > 0) {
-            _sendFunds(msg.sender, amount);
+            SafeERC20.safeTransfer(token, msg.sender, amount);
         }
         emit HolderFeeClaimed(msg.sender, _id, amount);
     }
@@ -240,10 +243,5 @@ contract Market is ERC1155, Ownable2Step {
             platformFee += shareHolderFee;
         }
         platformPool += platformFee;
-    }
-
-    function _sendFunds(address _to, uint256 _amount) internal {
-        (bool success, ) = _to.call{value: _amount}("");
-        require(success, "Transfer failed");
     }
 }
