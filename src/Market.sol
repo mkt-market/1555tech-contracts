@@ -62,8 +62,8 @@ contract Market is ERC1155, Ownable2Step {
     event ShareCreated(uint256 indexed id, string name, address indexed bondingCurve);
     event SharesBought(uint256 indexed id, address indexed buyer, uint256 amount, uint256 price, uint256 fee);
     event SharesSold(uint256 indexed id, address indexed seller, uint256 amount, uint256 price, uint256 fee);
-    event NFTsCreated(uint256 indexed id, address indexed creator, uint256 amount, uint256 price, uint256 fee);
-    event NFTsBurned(uint256 indexed id, address indexed burner, uint256 amount, uint256 price, uint256 fee);
+    event NFTsCreated(uint256 indexed id, address indexed creator, uint256 amount, uint256 fee);
+    event NFTsBurned(uint256 indexed id, address indexed burner, uint256 amount, uint256 fee);
     event PlatformFeeClaimed(address indexed claimer, uint256 amount);
     event CreatorFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
     event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
@@ -150,14 +150,14 @@ contract Market is ERC1155, Ownable2Step {
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
+    // TODO: When NFT minted, should not participate to pool fees, i.e. need to adjust counter
     function mintNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
         uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
-        uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
-        uint256 fee = feeForOne * _amount;
+        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
+        uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         
-        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, tokenCount);
         // The user also gets the proportional rewards for the minting
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -171,15 +171,15 @@ contract Market is ERC1155, Ownable2Step {
             SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         }
         // ERC1155 already logs, but we add this to have the price information
-        emit NFTsCreated(_id, msg.sender, _amount, price, fee);
+        emit NFTsCreated(_id, msg.sender, _amount, fee);
     }
 
     function burnNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
         uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 priceForOne, uint256 feeForOne) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
-        uint256 price = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
-        uint256 fee = feeForOne * _amount;
+        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
+        uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, tokenCount);
         // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -187,9 +187,9 @@ contract Market is ERC1155, Ownable2Step {
         tokensByAddress[_id][msg.sender] += _amount;
         _burn(msg.sender, _id, _amount);
 
-        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim + price - fee);
+        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         // ERC1155 already logs, but we add this to have the price information
-        emit NFTsBurned(_id, msg.sender, _amount, price, fee);
+        emit NFTsBurned(_id, msg.sender, _amount, fee);
     }
 
     /// @notice Withdraws the accrued platform fee
