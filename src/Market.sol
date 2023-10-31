@@ -129,7 +129,10 @@ contract Market is ERC1155, Ownable2Step {
     function buy(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount + 1, _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(
+            shareData[_id].tokenCount + 1,
+            _amount
+        );
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
@@ -154,7 +157,10 @@ contract Market is ERC1155, Ownable2Step {
     function sell(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount - _amount + 1, _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(
+            shareData[_id].tokenCount - _amount + 1,
+            _amount
+        );
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale (which is not the case for buys)
