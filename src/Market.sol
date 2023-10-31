@@ -31,6 +31,7 @@ contract Market is ERC1155, Ownable2Step {
 
     struct ShareData {
         uint256 tokenCount; // Number of outstanding tokens
+        uint256 tokensInCirculation; // Number of outstanding tokens - tokens that are minted as NFT, i.e. the number of tokens that receive fees
         uint256 shareHolderRewardsPerTokenScaled; // Accrued funds for the share holder per token, multiplied by 1e18 to avoid precision loss
         uint256 shareCreatorPool; // Unclaimed funds for the share creators
         address bondingCurve; // Bonding curve used for this share
@@ -128,17 +129,17 @@ contract Market is ERC1155, Ownable2Step {
     function buy(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount + 1, _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount + 1, _amount);
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         // Split the fee among holder, creator and platform
-        _splitFees(_id, fee, tokenCount);
+        _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
 
         shareData[_id].tokenCount += _amount;
+        shareData[_id].tokensInCirculation += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
         if (rewardsSinceLastClaim > 0) {
@@ -153,15 +154,15 @@ contract Market is ERC1155, Ownable2Step {
     function sell(uint256 _id, uint256 _amount) external {
         // If id does not exist, this will return address(0), causing a revert in the next line
         address bondingCurve = shareData[_id].bondingCurve;
-        uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, _amount);
+        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount - _amount + 1, _amount);
         // Split the fee among holder, creator and platform
-        _splitFees(_id, fee, tokenCount);
+        _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale (which is not the case for buys)
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
 
         shareData[_id].tokenCount -= _amount;
+        shareData[_id].tokensInCirculation -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
         // Send the funds to the user
@@ -169,19 +170,18 @@ contract Market is ERC1155, Ownable2Step {
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
-    // TODO: When NFT minted, should not participate to pool fees, i.e. need to adjust counter
     function mintNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
-        uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
+        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
         uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
-        _splitFees(_id, fee, tokenCount);
+        _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the proportional rewards for the minting
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         tokensByAddress[_id][msg.sender] -= _amount;
+        shareData[_id].tokensInCirculation -= _amount;
 
         _mint(msg.sender, _id, _amount, "");
 
@@ -194,15 +194,15 @@ contract Market is ERC1155, Ownable2Step {
 
     function burnNFT(uint256 _id, uint256 _amount) external {
         address bondingCurve = shareData[_id].bondingCurve;
-        uint256 tokenCount = shareData[_id].tokenCount;
-        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(tokenCount, 1);
+        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
         uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
-        _splitFees(_id, fee, tokenCount);
+        _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         tokensByAddress[_id][msg.sender] += _amount;
+        shareData[_id].tokensInCirculation += _amount;
         _burn(msg.sender, _id, _amount);
 
         SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
@@ -257,7 +257,7 @@ contract Market is ERC1155, Ownable2Step {
         if (_tokenCount > 0) {
             shareData[_id].shareHolderRewardsPerTokenScaled += (shareHolderFee * 1e18) / _tokenCount;
         } else {
-            // On the first buy, no share holders exist yet, so the fee goes to the platform
+            // If there are no tokens in circulation, the fee goes to the platform
             platformFee += shareHolderFee;
         }
         platformPool += platformFee;
