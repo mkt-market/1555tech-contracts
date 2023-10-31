@@ -625,6 +625,11 @@
         "internalType": "address",
         "name": "_bondingCurve",
         "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "_metadataURI",
+        "type": "string"
       }
     ],
     "name": "createNewShare",
@@ -949,6 +954,11 @@
         "internalType": "address",
         "name": "creator",
         "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "metadataURI",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
