@@ -36,6 +36,7 @@ contract Market is ERC1155, Ownable2Step {
         uint256 shareCreatorPool; // Unclaimed funds for the share creators
         address bondingCurve; // Bonding curve used for this share
         address creator; // Creator of the share
+        string metadataURI; // URI of the metadata
     }
 
     /// @notice Stores the data for a given share ID
@@ -109,7 +110,8 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Creates a new share
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
-    function createNewShare(string memory _shareName, address _bondingCurve)
+    /// @param _metadataURI URI of the metadata
+    function createNewShare(string memory _shareName, address _bondingCurve, string memory _metadataURI)
         external
         onlyShareCreator
         returns (uint256 id)
@@ -120,6 +122,7 @@ contract Market is ERC1155, Ownable2Step {
         shareIDs[_shareName] = id;
         shareData[id].bondingCurve = _bondingCurve;
         shareData[id].creator = msg.sender;
+        shareData[id].metadataURI = _metadataURI;
         emit ShareCreated(id, _shareName, _bondingCurve);
     }
 
