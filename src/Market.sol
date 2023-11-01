@@ -257,6 +257,8 @@ contract Market is ERC1155, Ownable2Step {
         emit CreatorFeeClaimed(msg.sender, _id, amount);
     }
 
+    /// @notice Withdraws the accrued share holder fee
+    /// @param _id ID of the share
     function claimHolderFee(uint256 _id) external {
         uint256 amount = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
