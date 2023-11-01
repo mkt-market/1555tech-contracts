@@ -111,11 +111,11 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
     /// @param _metadataURI URI of the metadata
-    function createNewShare(string memory _shareName, address _bondingCurve, string memory _metadataURI)
-        external
-        onlyShareCreator
-        returns (uint256 id)
-    {
+    function createNewShare(
+        string memory _shareName,
+        address _bondingCurve,
+        string memory _metadataURI
+    ) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
         id = ++shareCount;
@@ -126,16 +126,29 @@ contract Market is ERC1155, Ownable2Step {
         emit ShareCreated(id, _shareName, _bondingCurve);
     }
 
+    /// @notice Returns the price and fee for buying a given number of shares.
+    /// @param _id The ID of the share
+    /// @param _amount The number of shares to buy.
+    function getBuyPrice(uint256 _id, uint256 _amount) public view returns (uint256 price, uint256 fee) {
+        // If id does not exist, this will return address(0), causing a revert in the next line
+        address bondingCurve = shareData[_id].bondingCurve;
+        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount + 1, _amount);
+    }
+
+    /// @notice Returns the price and fee for selling a given number of shares.
+    /// @param _id The ID of the share
+    /// @param _amount The number of shares to sell.
+    function getSellPrice(uint256 _id, uint256 _amount) public view returns (uint256 price, uint256 fee) {
+        // If id does not exist, this will return address(0), causing a revert in the next line
+        address bondingCurve = shareData[_id].bondingCurve;
+        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount - _amount + 1, _amount);
+    }
+
     /// @notice Buy amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
     function buy(uint256 _id, uint256 _amount) external {
-        // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(
-            shareData[_id].tokenCount + 1,
-            _amount
-        );
+        (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
@@ -158,12 +171,7 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _id ID of the share
     /// @param _amount Amount of shares to sell
     function sell(uint256 _id, uint256 _amount) external {
-        // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 price, uint256 fee) = IBondingCurve(bondingCurve).getPriceAndFee(
-            shareData[_id].tokenCount - _amount + 1,
-            _amount
-        );
+        (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale (which is not the case for buys)
@@ -179,10 +187,20 @@ contract Market is ERC1155, Ownable2Step {
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
-    function mintNFT(uint256 _id, uint256 _amount) external {
+    /// @notice Returns the price and fee for minting a given number of NFTs.
+    /// @param _id The ID of the share
+    /// @param _amount The number of NFTs to mint.
+    function getNFTMintingPrice(uint256 _id, uint256 _amount) public view returns (uint256 fee) {
         address bondingCurve = shareData[_id].bondingCurve;
         (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
-        uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+    }
+
+    /// @notice Convert amount of tokens to NFTs for a given share ID
+    /// @param _id ID of the share
+    /// @param _amount Amount of tokens to convert. User needs to have this many tokens.
+    function mintNFT(uint256 _id, uint256 _amount) external {
+        uint256 fee = getNFTMintingPrice(_id, _amount);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
@@ -201,10 +219,12 @@ contract Market is ERC1155, Ownable2Step {
         emit NFTsCreated(_id, msg.sender, _amount, fee);
     }
 
+    /// @notice Burn amount of NFTs for a given share ID to get back tokens
+    /// @param _id ID of the share
+    /// @param _amount Amount of NFTs to burn
     function burnNFT(uint256 _id, uint256 _amount) external {
-        address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
-        uint256 fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        uint256 fee = getNFTMintingPrice(_id, _amount);
+
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
