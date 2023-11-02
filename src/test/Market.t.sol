@@ -20,11 +20,15 @@ contract MarketTest is Test {
     LinearBondingCurve bondingCurve;
     MockERC20 token;
     uint256 constant LINEAR_INCREASE = 1e18 / 1000;
+    address bob;
+    address alice;
 
     function setUp() public {
         bondingCurve = new LinearBondingCurve(LINEAR_INCREASE);
         token = new MockERC20("Mock Token", "MTK", 1e18);
         market = new Market("http://uri.xyz", address(token));
+        bob = address(1);
+        alice = address(2);
     }
 
     function testChangeBondingCurveAllowed() public {
@@ -36,6 +40,7 @@ contract MarketTest is Test {
     }
 
     function testFailCreateNewShareWhenBondingCurveNotWhitelisted() public {
+        vm.expectRevert("Bonding curve not whitelisted");
         market.createNewShare("Test Share", address(bondingCurve), "metadataURI");
     }
 
