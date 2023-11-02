@@ -46,7 +46,7 @@ contract Market is ERC1155, Ownable2Step {
     mapping(uint256 => address) public shareBondingCurves;
 
     /// @notice Bonding curves that can be used for shares
-    mapping(address => bool) whitelistedBondingCurves;
+    mapping(address => bool) public whitelistedBondingCurves;
 
     /// @notice Stores the number of outstanding tokens per share and address
     mapping(uint256 => mapping(address => uint256)) public tokensByAddress;

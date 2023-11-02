@@ -1,6 +1,6 @@
 pragma solidity ^0.8.0;
 
-import "ds-test/test.sol";
+import "forge-std/test.sol";
 import "../Market.sol";
 import "../bonding_curve/LinearBondingCurve.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -15,13 +15,13 @@ contract MockERC20 is ERC20 {
     }
 }
 
-contract MarketTest is DSTest {
+contract MarketTest is Test {
     Market market;
-    BondingCurve bondingCurve;
-    MockERC20 mockERC20;
+    LinearBondingCurve bondingCurve;
+    MockERC20 token;
+    uint256 constant LINEAR_INCREASE = 1e18 / 1000;
 
     function setUp() public {
-        uint256 public constant LINEAR_INCREASE = 1e18 / 1000;
         bondingCurve = new LinearBondingCurve(LINEAR_INCREASE);
         token = new MockERC20("Mock Token", "MTK", 1e18);
         market = new Market("http://uri.xyz", address(token));
