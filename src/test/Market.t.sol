@@ -39,6 +39,12 @@ contract MarketTest is Test {
         assertFalse(market.whitelistedBondingCurves(address(bondingCurve)));
     }
 
+    function testFailChangeBondingCurveAllowedNonOwner() public {
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(bob);
+        market.changeBondingCurveAllowed(address(bondingCurve), true);
+    }
+
     function testFailCreateNewShareWhenBondingCurveNotWhitelisted() public {
         vm.expectRevert("Bonding curve not whitelisted");
         market.createNewShare("Test Share", address(bondingCurve), "metadataURI");
@@ -48,5 +54,15 @@ contract MarketTest is Test {
         market.changeBondingCurveAllowed(address(bondingCurve), true);
         market.createNewShare("Test Share", address(bondingCurve), "metadataURI");
         assertEq(market.shareIDs("Test Share"), 1);
+    }
+
+    function testGetBuyPrice() public {
+        testCreateNewShare();
+        (uint256 priceOne, uint256 feeOne) = market.getBuyPrice(1, 1);
+        (uint256 priceTwo, uint256 feeTwo) = market.getBuyPrice(1, 2);
+        assertEq(priceOne, LINEAR_INCREASE);
+        assertEq(priceTwo, priceOne + LINEAR_INCREASE * 2);
+        assertEq(feeOne, priceOne / 10);
+        assertEq(feeTwo, priceTwo / 10); // log2(2) = 1
     }
 }
