@@ -52,6 +52,8 @@ contract MarketTest is Test {
 
     function testCreateNewShare() public {
         market.changeBondingCurveAllowed(address(bondingCurve), true);
+        market.restrictShareCreation(false);
+        vm.prank(bob);
         market.createNewShare("Test Share", address(bondingCurve), "metadataURI");
         assertEq(market.shareIDs("Test Share"), 1);
     }
@@ -72,5 +74,14 @@ contract MarketTest is Test {
         market.buy(1, 1);
         assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + LINEAR_INCREASE / 10);
         assertEq(token.balanceOf(address(this)), 1e18 - LINEAR_INCREASE - LINEAR_INCREASE / 10);
+    }
+
+    function testSell() public {
+        testBuy();
+        market.sell(1, 1);
+        uint256 fee = LINEAR_INCREASE / 10;
+        // Because of autoclaiming, 1/3 is transferred back
+        assertEq(token.balanceOf(address(market)), fee + fee * 67 / 100);
+        assertEq(token.balanceOf(address(this)), 1e18 - (fee + fee * 67 / 100));
     }
 }
