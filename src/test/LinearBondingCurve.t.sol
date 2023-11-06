@@ -21,6 +21,9 @@ contract LinearBondingCurveTest is Test {
     function testGetPriceMultiple() public {
         (uint256 price, uint256 fee) = bondingCurve.getPriceAndFee(1, 4);
         assertEq(price, LINEAR_INCREASE + 2 * LINEAR_INCREASE + 3 * LINEAR_INCREASE + 4 * LINEAR_INCREASE);
-        assertEq(fee, LINEAR_INCREASE / 10 + 2 * LINEAR_INCREASE / 10 + 3 * LINEAR_INCREASE / 10 + 4 * LINEAR_INCREASE / 20);
+        assertEq(
+            fee,
+            LINEAR_INCREASE / 10 + (2 * LINEAR_INCREASE) / 10 + (3 * LINEAR_INCREASE) / 10 + (4 * LINEAR_INCREASE) / 20
+        );
     }
 }
