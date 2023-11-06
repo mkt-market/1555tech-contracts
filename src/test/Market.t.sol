@@ -65,4 +65,12 @@ contract MarketTest is Test {
         assertEq(feeOne, priceOne / 10);
         assertEq(feeTwo, priceTwo / 10); // log2(2) = 1
     }
+
+    function testBuy() public {
+        testCreateNewShare();
+        token.approve(address(market), 1e18);
+        market.buy(1, 1);
+        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + LINEAR_INCREASE / 10);
+        assertEq(token.balanceOf(address(this)), 1e18 - LINEAR_INCREASE - LINEAR_INCREASE / 10);
+    }
 }
