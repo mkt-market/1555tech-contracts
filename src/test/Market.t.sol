@@ -84,4 +84,39 @@ contract MarketTest is Test {
         assertEq(token.balanceOf(address(market)), fee + fee * 67 / 100);
         assertEq(token.balanceOf(address(this)), 1e18 - (fee + fee * 67 / 100));
     }
+
+    function testMint() public {
+        testBuy();
+        market.mintNFT(1, 1);
+        uint256 fee = LINEAR_INCREASE / 10;
+        // Get back one third because of autoclaiming
+        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 2 * fee - fee * 33 / 100);
+    }
+
+    function testBurn() public {
+        testMint();
+        market.burnNFT(1, 1);
+        uint256 fee = LINEAR_INCREASE / 10;
+        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 3 * fee - fee * 33 / 100);
+    }
+
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external pure returns(bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) external pure returns(bytes4) {
+        return this.onERC1155BatchReceived.selector;
+    }
 }

@@ -11,7 +11,7 @@ contract Market is ERC1155, Ownable2Step {
     /*//////////////////////////////////////////////////////////////
                                  CONSTANTS
     //////////////////////////////////////////////////////////////*/
-    uint256 public constant NFT_FEE_BPS = 1_000; // 10%
+    uint256 public constant NFT_FEE_BPS = 10_000; // 10%
     uint256 public constant HOLDER_CUT_BPS = 33_000; // 33%
     uint256 public constant CREATOR_CUT_BPS = 33_000; // 33%
     // Platform cut: 100% - HOLDER_CUT_BPS - CREATOR_CUT_BPS
