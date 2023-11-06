@@ -100,6 +100,29 @@ contract MarketTest is Test {
         assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 3 * fee - fee * 33 / 100);
     }
 
+    function claimCreatorFeeNonCreator() public {
+        testCreateNewShare();
+        vm.expectRevert("Not creator");
+        vm.prank(alice);
+        market.claimCreatorFee(1);
+    }
+
+    function claimCreator() public {
+        testBuy();
+        vm.prank(bob);
+        market.claimCreatorFee(1);
+        uint256 fee = LINEAR_INCREASE / 10;
+        assertEq(token.balanceOf(bob), fee * 33 / 100);
+    }
+
+    function claimPlatform() public {
+        testBuy();
+        uint256 balBefore = token.balanceOf(address(this));
+        market.claimPlatformFee();
+        uint256 fee = LINEAR_INCREASE / 10;
+        assertEq(token.balanceOf(address(this)), balBefore + fee * 67 / 100);
+    }
+
     function onERC1155Received(
         address,
         address,
