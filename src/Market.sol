@@ -148,6 +148,7 @@ contract Market is ERC1155, Ownable2Step {
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
     function buy(uint256 _id, uint256 _amount) external {
+        require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
