@@ -11,9 +11,9 @@ contract Market is ERC1155, Ownable2Step {
     /*//////////////////////////////////////////////////////////////
                                  CONSTANTS
     //////////////////////////////////////////////////////////////*/
-    uint256 public constant NFT_FEE_BPS = 10_000; // 10%
-    uint256 public constant HOLDER_CUT_BPS = 33_000; // 33%
-    uint256 public constant CREATOR_CUT_BPS = 33_000; // 33%
+    uint256 public constant NFT_FEE_BPS = 1_000; // 10%
+    uint256 public constant HOLDER_CUT_BPS = 3_300; // 33%
+    uint256 public constant CREATOR_CUT_BPS = 3_300; // 33%
     // Platform cut: 100% - HOLDER_CUT_BPS - CREATOR_CUT_BPS
 
     /// @notice Payment token
@@ -194,7 +194,7 @@ contract Market is ERC1155, Ownable2Step {
     function getNFTMintingPrice(uint256 _id, uint256 _amount) public view returns (uint256 fee) {
         address bondingCurve = shareData[_id].bondingCurve;
         (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
-        fee = (priceForOne * _amount * NFT_FEE_BPS) / 100_000;
+        fee = (priceForOne * _amount * NFT_FEE_BPS) / 10_000;
     }
 
     /// @notice Convert amount of tokens to NFTs for a given share ID
@@ -282,8 +282,8 @@ contract Market is ERC1155, Ownable2Step {
         uint256 _fee,
         uint256 _tokenCount
     ) internal {
-        uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 100_000;
-        uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 100_000;
+        uint256 shareHolderFee = (_fee * HOLDER_CUT_BPS) / 10_000;
+        uint256 shareCreatorFee = (_fee * CREATOR_CUT_BPS) / 10_000;
         uint256 platformFee = _fee - shareHolderFee - shareCreatorFee;
         shareData[_id].shareCreatorPool += shareCreatorFee;
         if (_tokenCount > 0) {
