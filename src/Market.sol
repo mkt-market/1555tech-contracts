@@ -67,7 +67,7 @@ contract Market is ERC1155, Ownable2Step {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
     event BondingCurveStateChange(address indexed curve, bool isWhitelisted);
-    event ShareCreated(uint256 indexed id, string name, address indexed bondingCurve);
+    event ShareCreated(uint256 indexed id, string name, address indexed bondingCurve, address indexed creator);
     event SharesBought(uint256 indexed id, address indexed buyer, uint256 amount, uint256 price, uint256 fee);
     event SharesSold(uint256 indexed id, address indexed seller, uint256 amount, uint256 price, uint256 fee);
     event NFTsCreated(uint256 indexed id, address indexed creator, uint256 amount, uint256 fee);
@@ -123,7 +123,7 @@ contract Market is ERC1155, Ownable2Step {
         shareData[id].bondingCurve = _bondingCurve;
         shareData[id].creator = msg.sender;
         shareData[id].metadataURI = _metadataURI;
-        emit ShareCreated(id, _shareName, _bondingCurve);
+        emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
     }
 
     /// @notice Returns the price and fee for buying a given number of shares.
