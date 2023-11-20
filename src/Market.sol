@@ -4,10 +4,12 @@ pragma solidity 0.8.19;
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IBondingCurve} from "../interface/IBondingCurve.sol";
 import {Turnstile} from "../interface/Turnstile.sol";
 
-contract Market is ERC1155, Ownable2Step {
+contract Market is ERC1155, Ownable2Step, EIP712 {
     /*//////////////////////////////////////////////////////////////
                                  CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -63,6 +65,9 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice List of addresses that can add new shares when shareCreationRestricted is true
     mapping(address => bool) public whitelistedShareCreators;
 
+    /// @notice Address that signs data for creator whitelisting
+    address offchainSigner;
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -88,8 +93,14 @@ contract Market is ERC1155, Ownable2Step {
     /// @notice Initiates CSR on main- and testnet
     /// @param _uri ERC1155 Base URI
     /// @param _paymentToken Address of the payment token
-    constructor(string memory _uri, address _paymentToken) ERC1155(_uri) Ownable() {
+    /// @param _offchainSigner Address that signs data for creator whitelisting
+    constructor(
+        string memory _uri,
+        address _paymentToken,
+        address _offchainSigner
+    ) ERC1155(_uri) Ownable() EIP712("1155tech", "1") {
         token = IERC20(_paymentToken);
+        offchainSigner = _offchainSigner;
         if (block.chainid == 7700 || block.chainid == 7701) {
             // Register CSR on Canto main- and testnet
             Turnstile turnstile = Turnstile(0xEcf044C5B4b867CFda001101c617eCd347095B44);
@@ -309,5 +320,22 @@ contract Market is ERC1155, Ownable2Step {
     function changeShareCreatorWhitelist(address _address, bool _isWhitelisted) external onlyOwner {
         require(whitelistedShareCreators[_address] != _isWhitelisted, "State already set");
         whitelistedShareCreators[_address] = _isWhitelisted;
+    }
+
+    /// @notice Allows to whitelist an address by a signature
+    /// @param signature Signature that was obtained off-chain
+    function changeShareCreatorWhitelistBySignature(bytes memory signature) external {
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(abi.encode(keccak256("ShareCreator(address from)"), msg.sender))
+        );
+        address signer = ECDSA.recover(digest, signature);
+        require(signer == offchainSigner);
+        whitelistedShareCreators[msg.sender] = true;
+    }
+
+    /// @notice Change the address of the offchain signer for the share crator whitelist
+    /// @param _newSigner New address to use as the offchain signer
+    function changeOffchainSigner(address _newSigner) external onlyOwner {
+        offchainSigner = _newSigner;
     }
 }

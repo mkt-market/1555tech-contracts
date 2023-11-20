@@ -20,7 +20,7 @@ contract DeploymentScript is Script {
         uint256 privateKey = vm.deriveKey(seedPhrase, 0);
         vm.startBroadcast(privateKey);
         LinearBondingCurve bondingCurve = new LinearBondingCurve(LINEAR_BONDING_CURVE_INCREASE);
-        Market market = new Market(ERC1155_URI, NOTE);
+        Market market = new Market(ERC1155_URI, NOTE, msg.sender); // TODO: Define signer
         market.changeBondingCurveAllowed(address(bondingCurve), true);
         vm.stopBroadcast();
     }
