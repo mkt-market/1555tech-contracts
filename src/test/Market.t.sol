@@ -39,16 +39,14 @@ contract MarketTest is Test {
         assertFalse(market.whitelistedBondingCurves(address(bondingCurve)));
     }
 
-    function testFailChangeBondingCurveAllowedNonOwner() public {
-        // TODO: For some reason, assertion fails, but call reverts as expected
-        // vm.expectRevert("Ownable: caller is not the owner");
+    function testChangeBondingCurveAllowedNonOwnerFails() public {
+        vm.expectRevert("Ownable: caller is not the owner");
         vm.prank(bob);
         market.changeBondingCurveAllowed(address(bondingCurve), true);
     }
 
-    function testFailCreateNewShareWhenBondingCurveNotWhitelisted() public {
-        // TODO: For some reason, assertion fails, but call reverts as expected
-        // vm.expectRevert("Bonding curve not whitelisted");
+    function testCreateNewShareWhenBondingCurveNotWhitelistedFails() public {
+        vm.expectRevert("Bonding curve not whitelisted");
         market.createNewShare("Test Share", address(bondingCurve), "metadataURI");
     }
 
