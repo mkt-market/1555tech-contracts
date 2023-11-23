@@ -158,9 +158,11 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Buy amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
-    function buy(uint256 _id, uint256 _amount) external {
+    /// @param _maxPrice Maximum price that user is willing to buy (for the whole sale)
+    function buy(uint256 _id, uint256 _amount, uint256 _maxPrice) external {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
+        require(price <= _maxPrice, "Price too high");
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
@@ -182,8 +184,10 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Sell amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to sell
-    function sell(uint256 _id, uint256 _amount) external {
+    /// @param _minPrice Minimum price that user wants to receive (for the whole sale)
+    function sell(uint256 _id, uint256 _amount, uint256 _minPrice) external {
         (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
+        require(price >= _minPrice, "Price too low");
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale (which is not the case for buys)
