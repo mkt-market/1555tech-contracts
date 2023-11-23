@@ -71,14 +71,14 @@ contract MarketTest is Test {
     function testBuy() public {
         testCreateNewShare();
         token.approve(address(market), 1e18);
-        market.buy(1, 1);
+        market.buy(1, 1, type(uint256).max);
         assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + LINEAR_INCREASE / 10);
         assertEq(token.balanceOf(address(this)), 1e18 - LINEAR_INCREASE - LINEAR_INCREASE / 10);
     }
 
     function testSell() public {
         testBuy();
-        market.sell(1, 1);
+        market.sell(1, 1, 0);
         uint256 fee = LINEAR_INCREASE / 10;
         // Because of autoclaiming, 1/3 is transferred back
         assertEq(token.balanceOf(address(market)), fee + (fee * 67) / 100);
