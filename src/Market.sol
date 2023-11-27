@@ -126,6 +126,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     ) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
+        require(bytes(_metadataURI).length > 0, "No metadata URI provided");
         id = ++shareCount;
         shareIDs[_shareName] = id;
         shareData[id].bondingCurve = _bondingCurve;
@@ -164,7 +165,6 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
-        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         // The reward calculation has to use the old rewards value (pre fee-split) to not include the fees of this buy
         // The rewardsLastClaimedValue then needs to be updated with the new value such that the user cannot claim fees of this buy
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -176,6 +176,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[_id].tokensInCirculation += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
         if (rewardsSinceLastClaim > 0) {
             SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         }
@@ -208,7 +209,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
-    /// @notice Returns the price and fee for minting a given number of NFTs.
+    /// @notice Returns the price for minting a given number of NFTs.
     /// @param _id The ID of the share
     /// @param _amount The number of NFTs to mint.
     function getNFTMintingPrice(uint256 _id, uint256 _amount) public view returns (uint256 fee) {
@@ -223,13 +224,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     function mintNFT(uint256 _id, uint256 _amount) external {
         uint256 fee = getNFTMintingPrice(_id, _amount);
 
-        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the proportional rewards for the minting
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         tokensByAddress[_id][msg.sender] -= _amount;
         shareData[_id].tokensInCirculation -= _amount;
+
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
 
         _mint(msg.sender, _id, _amount, "");
 
@@ -246,7 +248,6 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     function burnNFT(uint256 _id, uint256 _amount) external {
         uint256 fee = getNFTMintingPrice(_id, _amount);
 
-        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
@@ -255,6 +256,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[_id].tokensInCirculation += _amount;
         _burn(msg.sender, _id, _amount);
 
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
         SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsBurned(_id, msg.sender, _amount, fee);
