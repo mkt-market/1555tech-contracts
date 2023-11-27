@@ -44,9 +44,6 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Stores the data for a given share ID
     mapping(uint256 => ShareData) public shareData;
 
-    /// @notice Stores the bonding curve per share
-    mapping(uint256 => address) public shareBondingCurves;
-
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) public whitelistedBondingCurves;
 
