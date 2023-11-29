@@ -272,7 +272,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
     /// @notice Withdraws the accrued share creator fee
     /// @param _id ID of the share
-    function claimCreatorFee(uint256 _id) external {
+    function claimCreatorFee(uint256 _id) public {
         require(shareData[_id].creator == msg.sender, "Not creator");
         uint256 amount = shareData[_id].shareCreatorPool;
         shareData[_id].shareCreatorPool = 0;
@@ -282,13 +282,25 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
     /// @notice Withdraws the accrued share holder fee
     /// @param _id ID of the share
-    function claimHolderFee(uint256 _id) external {
+    function claimHolderFee(uint256 _id) public {
         uint256 amount = _getRewardsSinceLastClaim(_id);
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         if (amount > 0) {
             SafeERC20.safeTransfer(token, msg.sender, amount);
         }
         emit HolderFeeClaimed(msg.sender, _id, amount);
+    }
+
+    /// @notice Withdraws the accrued share creator and share holder fee for multiple share IDs
+    /// @param _creatorIds IDs of the shares for which the creator fee should be claimed
+    /// @param _holderIds IDs of the shares for which the holder fee should be claimed
+    function multiClaim(uint256[] calldata _creatorIds, uint256[] calldata _holderIds) external {
+        for (uint256 i = 0; i < _creatorIds.length; i++) {
+            claimCreatorFee(_creatorIds[i]);
+        }
+        for (uint256 i = 0; i < _holderIds.length; i++) {
+            claimHolderFee(_holderIds[i]);
+        }
     }
 
     function _getRewardsSinceLastClaim(uint256 _id) internal view returns (uint256 amount) {
