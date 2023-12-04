@@ -11,7 +11,6 @@ contract DeploymentScript is Script {
     // address constant NOTE = address(0x4e71A2E537B7f9D9413D3991D37958c0b5e1e503);
     address constant NOTE = address(0x03F734Bd9847575fDbE9bEaDDf9C166F880B5E5f);
     uint256 constant LINEAR_BONDING_CURVE_INCREASE = 1e18 / 1000;
-    string constant ERC1155_URI = "https://tbd.com/{id}.json";
 
     function setUp() public {}
 
@@ -20,7 +19,7 @@ contract DeploymentScript is Script {
         uint256 privateKey = vm.deriveKey(seedPhrase, 0);
         vm.startBroadcast(privateKey);
         LinearBondingCurve bondingCurve = new LinearBondingCurve(LINEAR_BONDING_CURVE_INCREASE);
-        Market market = new Market(ERC1155_URI, NOTE, msg.sender); // TODO: Define signer
+        Market market = new Market(NOTE, msg.sender); // TODO: Define signer
         market.changeBondingCurveAllowed(address(bondingCurve), true);
         vm.stopBroadcast();
     }
