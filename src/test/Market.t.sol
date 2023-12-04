@@ -80,24 +80,24 @@ contract MarketTest is Test {
         testBuy();
         market.sell(1, 1, 0);
         uint256 fee = LINEAR_INCREASE / 10;
-        // Because of autoclaiming, 1/3 is transferred back
-        assertEq(token.balanceOf(address(market)), fee + (fee * 67) / 100);
-        assertEq(token.balanceOf(address(this)), 1e18 - (fee + (fee * 67) / 100));
+        // Because of autoclaiming, 2/3 is transferred back
+        assertEq(token.balanceOf(address(market)), fee + (fee * 34) / 100);
+        assertEq(token.balanceOf(address(this)), 1e18 - (fee + (fee * 34) / 100));
     }
 
     function testMint() public {
         testBuy();
         market.mintNFT(1, 1);
         uint256 fee = LINEAR_INCREASE / 10;
-        // Get back one third because of autoclaiming
-        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 2 * fee - (fee * 33) / 100);
+        // Get back two thirds because of autoclaiming
+        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 2 * fee - (fee * 66) / 100);
     }
 
     function testBurn() public {
         testMint();
         market.burnNFT(1, 1);
         uint256 fee = LINEAR_INCREASE / 10;
-        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 3 * fee - (fee * 33) / 100);
+        assertEq(token.balanceOf(address(market)), LINEAR_INCREASE + 3 * fee - (fee * 66) / 100);
     }
 
     function claimCreatorFeeNonCreator() public {
