@@ -166,6 +166,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
         uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
+        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
 
         shareData[_id].tokenCount += _amount;
         shareData[_id].tokensInCirculation += _amount;
