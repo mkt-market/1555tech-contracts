@@ -26,7 +26,7 @@ contract MarketTest is Test {
     function setUp() public {
         bondingCurve = new LinearBondingCurve(LINEAR_INCREASE);
         token = new MockERC20("Mock Token", "MTK", 1e18);
-        market = new Market("http://uri.xyz", address(token), address(this));
+        market = new Market(address(token), address(this));
         bob = address(1);
         alice = address(2);
     }

@@ -88,14 +88,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     }
 
     /// @notice Initiates CSR on main- and testnet
-    /// @param _uri ERC1155 Base URI
     /// @param _paymentToken Address of the payment token
     /// @param _offchainSigner Address that signs data for creator whitelisting
-    constructor(
-        string memory _uri,
-        address _paymentToken,
-        address _offchainSigner
-    ) ERC1155(_uri) Ownable() EIP712("1155tech", "1") {
+    constructor(address _paymentToken, address _offchainSigner) ERC1155("") Ownable() EIP712("1155tech", "1") {
         token = IERC20(_paymentToken);
         offchainSigner = _offchainSigner;
         if (block.chainid == 7700 || block.chainid == 7701) {
@@ -133,6 +128,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].creator = msg.sender;
         shareData[id].metadataURI = _metadataURI;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
+        emit URI(_metadataURI, id); // Emit ERC1155 URI event
+    }
+
+    /// @notice Returns the ERC1155 metadata URI for a given share ID
+    /// @param _id The ID of the ERC1155 token
+    function uri(uint256 _id) public view override returns (string memory) {
+        require(_id > 0 && _id <= shareCount, "Invalid ID");
+        return shareData[_id].metadataURI;
     }
 
     /// @notice Returns the price and fee for buying a given number of shares.
