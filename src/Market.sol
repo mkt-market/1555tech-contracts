@@ -176,8 +176,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
-        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
-        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        claimHolderFee(_id);
 
         shareData[_id].tokenCount += _amount;
         shareData[_id].tokensInCirculation += _amount;
@@ -187,9 +186,6 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
-        if (rewardsSinceLastClaim > 0) {
-            SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
-        }
         emit SharesBought(_id, msg.sender, _amount, price, fee);
     }
 
@@ -207,15 +203,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale
-        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
-        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        claimHolderFee(_id);
 
         shareData[_id].tokenCount -= _amount;
         shareData[_id].tokensInCirculation -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
         // Send the funds to the user
-        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim + price - fee);
+        SafeERC20.safeTransfer(token, msg.sender, price - fee);
         emit SharesSold(_id, msg.sender, _amount, price, fee);
     }
 
@@ -236,8 +231,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the proportional rewards for the minting
-        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
-        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        claimHolderFee(_id);
         tokensByAddress[_id][msg.sender] -= _amount;
         shareData[_id].tokensInCirculation -= _amount;
 
@@ -245,9 +239,6 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
         _mint(msg.sender, _id, _amount, "");
 
-        if (rewardsSinceLastClaim > 0) {
-            SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
-        }
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsCreated(_id, msg.sender, _amount, fee);
     }
@@ -260,14 +251,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user does not get the proportional rewards for the burning (unless they have additional tokens that are not in the NFT)
-        uint256 rewardsSinceLastClaim = _getRewardsSinceLastClaim(_id);
-        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        claimHolderFee(_id);
         tokensByAddress[_id][msg.sender] += _amount;
         shareData[_id].tokensInCirculation += _amount;
         _burn(msg.sender, _id, _amount);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
-        SafeERC20.safeTransfer(token, msg.sender, rewardsSinceLastClaim);
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsBurned(_id, msg.sender, _amount, fee);
     }
@@ -297,8 +286,8 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
         if (amount > 0) {
             SafeERC20.safeTransfer(token, msg.sender, amount);
+            emit HolderFeeClaimed(msg.sender, _id, amount);
         }
-        emit HolderFeeClaimed(msg.sender, _id, amount);
     }
 
     /// @notice Withdraws the accrued share creator and share holder fee for multiple share IDs
