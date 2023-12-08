@@ -65,6 +65,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Address that signs data for creator whitelisting
     address offchainSigner;
 
+    /// @notice Name of the token.
+    /// @dev According to ERC1155, this is not required/part of the standard, but Blockscout parses it
+    string public constant name = "1155tech";
+
+    /// @notice Symbol of the token.
+    /// @dev According to ERC1155, this is not required/part of the standard, but Blockscout parses it
+    string public constant symbol = "1155tech";
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
