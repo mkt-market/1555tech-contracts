@@ -84,7 +84,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     event NFTsBurned(uint256 indexed id, address indexed burner, uint256 amount, uint256 fee);
     event PlatformFeeClaimed(address indexed claimer, uint256 amount);
     event CreatorFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
-    event HolderFeeClaimed(address indexed claimer, uint256 indexed id, uint256 amount);
+    event HolderFeeClaimed(
+        address indexed claimer,
+        uint256 indexed id,
+        uint256 amount,
+        uint256 currRewardsLastClaimedValue
+    );
     event ShareCreationRestricted(bool isRestricted);
 
     modifier onlyShareCreator() {
@@ -283,11 +288,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _id ID of the share
     function claimHolderFee(uint256 _id) public {
         uint256 amount = _getRewardsSinceLastClaim(_id);
-        rewardsLastClaimedValue[_id][msg.sender] = shareData[_id].shareHolderRewardsPerTokenScaled;
+        uint256 currRewardsLastClaimedValue = shareData[_id].shareHolderRewardsPerTokenScaled;
+        rewardsLastClaimedValue[_id][msg.sender] = currRewardsLastClaimedValue;
         if (amount > 0) {
             SafeERC20.safeTransfer(token, msg.sender, amount);
-            emit HolderFeeClaimed(msg.sender, _id, amount);
         }
+        emit HolderFeeClaimed(msg.sender, _id, amount, currRewardsLastClaimedValue);
     }
 
     /// @notice Withdraws the accrued share creator and share holder fee for multiple share IDs

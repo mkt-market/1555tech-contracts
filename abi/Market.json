@@ -2,11 +2,6 @@
   {
     "inputs": [
       {
-        "internalType": "string",
-        "name": "_uri",
-        "type": "string"
-      },
-      {
         "internalType": "address",
         "name": "_paymentToken",
         "type": "address"
@@ -130,6 +125,12 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "currRewardsLastClaimedValue",
         "type": "uint256"
       }
     ],
@@ -912,6 +913,19 @@
   },
   {
     "inputs": [],
+    "name": "name",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "owner",
     "outputs": [
       {
@@ -1215,6 +1229,19 @@
   },
   {
     "inputs": [],
+    "name": "symbol",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "token",
     "outputs": [
       {
@@ -1267,7 +1294,7 @@
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "",
+        "name": "_id",
         "type": "uint256"
       }
     ],
