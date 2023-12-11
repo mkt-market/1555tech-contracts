@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.19;
 
 import {IBondingCurve} from "../../interface/IBondingCurve.sol";
