@@ -38,6 +38,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 shareCreatorPool; // Unclaimed funds for the share creators
         address bondingCurve; // Bonding curve used for this share
         address creator; // Creator of the share
+        address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
     }
 
@@ -91,6 +92,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 currRewardsLastClaimedValue
     );
     event ShareCreationRestricted(bool isRestricted);
+    event ShareOwnerUpdated(uint256 indexed id, address indexed newOwner);
 
     modifier onlyShareCreator() {
         require(
@@ -139,6 +141,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareIDs[_shareName] = id;
         shareData[id].bondingCurve = _bondingCurve;
         shareData[id].creator = msg.sender;
+        shareData[id].owner = msg.sender;
         shareData[id].metadataURI = _metadataURI;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
@@ -277,11 +280,19 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Withdraws the accrued share creator fee
     /// @param _id ID of the share
     function claimCreatorFee(uint256 _id) public {
-        require(shareData[_id].creator == msg.sender, "Not creator");
+        require(shareData[_id].owner == msg.sender, "Not owner");
         uint256 amount = shareData[_id].shareCreatorPool;
         shareData[_id].shareCreatorPool = 0;
         SafeERC20.safeTransfer(token, msg.sender, amount);
         emit CreatorFeeClaimed(msg.sender, _id, amount);
+    }
+
+    /// @notice Changes the owner of a share
+    /// @param _id ID of the share
+    function changeShareOwner(uint256 _id, address _newOwner) external {
+        require(shareData[_id].owner == msg.sender, "Not owner");
+        shareData[_id].owner = _newOwner;
+        emit ShareOwnerUpdated(_id, _newOwner);
     }
 
     /// @notice Withdraws the accrued share holder fee
