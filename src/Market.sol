@@ -6,6 +6,7 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IasD} from "../interface/IasD.sol";
 import {IBondingCurve} from "../interface/IBondingCurve.sol";
 import {Turnstile} from "../interface/Turnstile.sol";
 
@@ -20,6 +21,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
     /// @notice Payment token
     IERC20 public immutable token;
+
+    /// @notice Address of the asD token
+    IasD public immutable asD;
 
     /*//////////////////////////////////////////////////////////////
                                  STATE
@@ -105,9 +109,15 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Initiates CSR on main- and testnet
     /// @param _paymentToken Address of the payment token
     /// @param _offchainSigner Address that signs data for creator whitelisting
-    constructor(address _paymentToken, address _offchainSigner) ERC1155("") Ownable() EIP712("1155tech", "1") {
+    /// @param _asdToken Address of the asD token
+    constructor(
+        address _paymentToken,
+        address _offchainSigner,
+        address _asdToken
+    ) ERC1155("") Ownable() EIP712("1155tech", "1") {
         token = IERC20(_paymentToken);
         offchainSigner = _offchainSigner;
+        asD = IasD(_asdToken);
         if (block.chainid == 7700 || block.chainid == 7701) {
             // Register CSR on Canto main- and testnet
             Turnstile turnstile = Turnstile(0xEcf044C5B4b867CFda001101c617eCd347095B44);
@@ -194,6 +204,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price + fee);
+        _mintAsD(price + fee);
         emit SharesBought(_id, msg.sender, _amount, price, fee);
     }
 
@@ -217,6 +228,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[_id].tokensInCirculation -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
+        _burnAsD(price - fee);
         // Send the funds to the user
         SafeERC20.safeTransfer(token, msg.sender, price - fee);
         emit SharesSold(_id, msg.sender, _amount, price, fee);
@@ -244,6 +256,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[_id].tokensInCirculation -= _amount;
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
+        _mintAsD(fee);
 
         _mint(msg.sender, _id, _amount, "");
 
@@ -265,6 +278,8 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         _burn(msg.sender, _id, _amount);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), fee);
+        _mintAsD(fee);
+
         // ERC1155 already logs, but we add this to have the price information
         emit NFTsBurned(_id, msg.sender, _amount, fee);
     }
@@ -273,6 +288,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     function claimPlatformFee() external onlyOwner {
         uint256 amount = platformPool;
         platformPool = 0;
+        _burnAsD(amount);
         SafeERC20.safeTransfer(token, msg.sender, amount);
         emit PlatformFeeClaimed(msg.sender, amount);
     }
@@ -283,6 +299,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(shareData[_id].owner == msg.sender, "Not owner");
         uint256 amount = shareData[_id].shareCreatorPool;
         shareData[_id].shareCreatorPool = 0;
+        _burnAsD(amount);
         SafeERC20.safeTransfer(token, msg.sender, amount);
         emit CreatorFeeClaimed(msg.sender, _id, amount);
     }
@@ -302,6 +319,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 currRewardsLastClaimedValue = shareData[_id].shareHolderRewardsPerTokenScaled;
         rewardsLastClaimedValue[_id][msg.sender] = currRewardsLastClaimedValue;
         if (amount > 0) {
+            _burnAsD(amount);
             SafeERC20.safeTransfer(token, msg.sender, amount);
         }
         emit HolderFeeClaimed(msg.sender, _id, amount, currRewardsLastClaimedValue);
@@ -343,6 +361,19 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             platformFee += shareHolderFee;
         }
         platformPool += platformFee;
+    }
+
+    /// @notice Internal hook that should be called after every NOTE transfer to convert it into asD
+    /// @param _amount Amount to convert
+    function _mintAsD(uint256 _amount) internal {
+        token.approve(address(asD), _amount);
+        asD.mint(_amount);
+    }
+
+    /// @notice Internal hook that should be called after every asD transfer to convert it into NOTE
+    /// @param _amount Amount to convert
+    function _burnAsD(uint256 _amount) internal {
+        asD.burn(_amount);
     }
 
     /// @notice Restricts or unrestricts share creation
