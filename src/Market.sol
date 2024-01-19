@@ -180,7 +180,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _id,
         uint256 _amount,
         uint256 _maxPrice
-    ) external {
+    ) public {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
@@ -197,6 +197,21 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         emit SharesBought(_id, msg.sender, _amount, price, fee);
     }
 
+    /// @notice Perform multiple buys in one transaction
+    /// @param _ids IDs of the shares
+    /// @param _amounts Amounts of shares to buy
+    /// @param _maxPrices Maximum prices that user is willing to buy (for the whole sale)
+    function multiBuy(
+        uint256[] calldata _ids,
+        uint256[] calldata _amounts,
+        uint256[] calldata _maxPrices
+    ) external {
+        require(_ids.length == _amounts.length && _ids.length == _maxPrices.length, "Length mismatch");
+        for (uint256 i = 0; i < _ids.length; i++) {
+            buy(_ids[i], _amounts[i], _maxPrices[i]);
+        }
+    }
+
     /// @notice Sell amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to sell
@@ -205,7 +220,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _id,
         uint256 _amount,
         uint256 _minPrice
-    ) external {
+    ) public {
         (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
         require(price >= _minPrice, "Price too low");
         // Split the fee among holder, creator and platform
@@ -220,6 +235,21 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // Send the funds to the user
         SafeERC20.safeTransfer(token, msg.sender, price - fee);
         emit SharesSold(_id, msg.sender, _amount, price, fee);
+    }
+
+    /// @notice Perform multiple sells in one transaction
+    /// @param _ids IDs of the shares
+    /// @param _amounts Amounts of shares to sell
+    /// @param _minPrices Minimum prices that user wants to receive (for the whole sale)
+    function multiSell(
+        uint256[] calldata _ids,
+        uint256[] calldata _amounts,
+        uint256[] calldata _minPrices
+    ) external {
+        require(_ids.length == _amounts.length && _ids.length == _minPrices.length, "Length mismatch");
+        for (uint256 i = 0; i < _ids.length; i++) {
+            sell(_ids[i], _amounts[i], _minPrices[i]);
+        }
     }
 
     /// @notice Returns the price for minting a given number of NFTs.
