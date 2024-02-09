@@ -11,12 +11,11 @@ contract LinearBondingCurve is IBondingCurve {
         priceIncrease = _priceIncrease;
     }
 
-    function getPriceAndFee(uint256 shareCount, uint256 amount)
-        external
-        view
-        override
-        returns (uint256 price, uint256 fee)
-    {
+    function getPriceAndFee(
+        uint256 shareCount,
+        uint256 shareCountBondingCurve,
+        uint256 amount
+    ) external view override returns (uint256 price, uint256 fee) {
         for (uint256 i = shareCount; i < shareCount + amount; i++) {
             uint256 tokenPrice = priceIncrease * i;
             price += tokenPrice;

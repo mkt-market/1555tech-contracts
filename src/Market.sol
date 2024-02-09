@@ -40,6 +40,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         address creator; // Creator of the share
         address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
+        uint256 tokenCountBondingCurve; // Number of tokens in the bonding curve
     }
 
     /// @notice Stores the data for a given share ID
@@ -159,8 +160,13 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _amount The number of shares to buy.
     function getBuyPrice(uint256 _id, uint256 _amount) public view returns (uint256 price, uint256 fee) {
         // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareData[_id].bondingCurve;
-        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount + 1, _amount);
+        ShareData storage share = shareData[_id];
+        address bondingCurve = share.bondingCurve;
+        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(
+            share.tokenCount + 1,
+            share.tokenCountBondingCurve + 1,
+            _amount
+        );
     }
 
     /// @notice Returns the price and fee for selling a given number of shares.
@@ -168,8 +174,13 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _amount The number of shares to sell.
     function getSellPrice(uint256 _id, uint256 _amount) public view returns (uint256 price, uint256 fee) {
         // If id does not exist, this will return address(0), causing a revert in the next line
-        address bondingCurve = shareData[_id].bondingCurve;
-        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount - _amount + 1, _amount);
+        ShareData storage share = shareData[_id];
+        address bondingCurve = share.bondingCurve;
+        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(
+            share.tokenCount - _amount + 1,
+            share.tokenCountBondingCurve - _amount + 1,
+            _amount
+        );
     }
 
     /// @notice Buy amount of tokens for a given share ID
@@ -187,6 +198,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         claimHolderFee(_id);
 
         shareData[_id].tokenCount += _amount;
+        shareData[_id].tokenCountBondingCurve += _amount;
         shareData[_id].tokensInCirculation += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
@@ -229,6 +241,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         claimHolderFee(_id);
 
         shareData[_id].tokenCount -= _amount;
+        shareData[_id].tokenCountBondingCurve -= _amount;
         shareData[_id].tokensInCirculation -= _amount;
         tokensByAddress[_id][msg.sender] -= _amount; // Would underflow if user did not have enough tokens
 
@@ -256,8 +269,13 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _id The ID of the share
     /// @param _amount The number of NFTs to mint.
     function getNFTMintingPrice(uint256 _id, uint256 _amount) public view returns (uint256 fee) {
-        address bondingCurve = shareData[_id].bondingCurve;
-        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(shareData[_id].tokenCount, 1);
+        ShareData storage share = shareData[_id];
+        address bondingCurve = share.bondingCurve;
+        (uint256 priceForOne, ) = IBondingCurve(bondingCurve).getPriceAndFee(
+            share.tokenCount,
+            share.tokenCountBondingCurve,
+            1
+        );
         fee = (priceForOne * _amount * NFT_FEE_BPS) / 10_000;
     }
 
