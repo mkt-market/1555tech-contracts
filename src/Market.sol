@@ -32,6 +32,27 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Stores the share ID of a given share name
     mapping(string => uint256) public shareIDs;
 
+    struct DutchAuctionData {
+        uint40 auctionStart;
+        uint256 startPrice;
+        uint256 discountRate;
+        uint256 vestingStart;
+        uint256 vestingEnd;
+    }
+
+    struct PresaleData {
+        uint256 price;
+        uint256 vestingStart;
+        uint256 vestingEnd;
+        bytes32 treeRoot; // Merkle root of the presale allocation
+    }
+
+    struct RemainingTokens {
+        uint256 bondingCurve;
+        uint256 dutchAuction;
+        // Presale tokens are implicitly given by the allocation counts
+    }
+
     struct ShareData {
         uint256 tokenCount; // Number of outstanding tokens
         uint256 tokensInCirculation; // Number of outstanding tokens - tokens that are minted as NFT, i.e. the number of tokens that receive fees
@@ -42,19 +63,10 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
         uint256 tokenCountBondingCurve; // Number of tokens in the bonding curve
-        uint256 numTokens; // Maximum number of tokens that can be minted
-        uint16 presaleBps; // Percentage (in BPS) of the presale allocation
         bool presale; // If true, no bonding curve buys are possible, only pre sale allocation and dutch auction
-        bytes32 presaleTreeRoot; // Merkle root of the presale allocation
-        uint256 presalePrice; // Price of the presale
-        uint40 presaleVestingStart; // Start of the presale vesting period
-        uint40 presaleVestingEnd; // End of the presale vesting period
-        uint16 dutchAuctionBps; // Percentage (in BPS) of the dutch auction allocation
-        uint40 dutchAuctionStart; // Start of the dutch auction
-        uint256 dutchAuctionStartPrice; // Start price of the dutch auction
-        uint256 dutchAuctionDiscountRate; // Discount rate of the dutch auction (per second)
-        uint256 dutchAuctionVestingStart; // Start of the dutch auction vesting period
-        uint256 dutchAuctionVestingEnd; // End of the dutch auction vesting period
+        PresaleData presaleData; // Data for the presale
+        DutchAuctionData dutchAuctionData; // Data for the dutch auction
+        RemainingTokens remainingTokens; // Remaining tokens for the presale and dutch auction
     }
 
     /// @notice Stores the data for a given share ID
@@ -156,32 +168,18 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
     /// @param _metadataURI URI of the metadata
-    /// @param _numTokens Maximum number of tokens that can be minted
-    /// @param _presaleBps Percentage (in BPS) of the presale allocation
-    /// @param _presaleTreeRoot Merkle root of the presale allocation
-    /// @param _presalePrice Price of the presale
-    /// @param _presaleVestingStart Start of the presale vesting period
-    /// @param _presaleVestingEnd End of the presale vesting period
-    /// @param _dutchAuctionBps Percentage (in BPS) of the dutch auction allocation
-    /// @param _dutchAuctionStart Start timestamp of the dutch auction
-    /// @param _dutchAuctionStartPrice Start price of the dutch auction
-    /// @param _dutchAuctionDiscountRate Discount rate of the dutch auction (per second)
+    /// @param _tokensDutchAuction Number of tokens for the dutch auction
+    /// @param _tokensBondingCurve Number of tokens for the bonding curve
+    /// @param _presaleData Data for the presale
+    /// @param _dutchAuctionData Data for the dutch auction
     function createNewShare(
         string memory _shareName,
         address _bondingCurve,
         string memory _metadataURI,
-        uint256 _numTokens,
-        uint16 _presaleBps,
-        bytes32 _presaleTreeRoot,
-        uint256 _presalePrice,
-        uint40 _presaleVestingStart,
-        uint40 _presaleVestingEnd,
-        uint16 _dutchAuctionBps,
-        uint40 _dutchAuctionStart,
-        uint256 _dutchAuctionStartPrice,
-        uint256 _dutchAuctionDiscountRate,
-        uint256 _dutchAuctionVestingStart,
-        uint256 _dutchAuctionVestingEnd
+        uint256 _tokensDutchAuction,
+        uint256 _tokensBondingCurve,
+        PresaleData memory _presaleData,
+        DutchAuctionData memory _dutchAuctionData
     ) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
@@ -192,19 +190,10 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].creator = msg.sender;
         shareData[id].owner = msg.sender;
         shareData[id].metadataURI = _metadataURI;
-        shareData[id].numTokens = _numTokens;
-        shareData[id].presaleBps = _presaleBps;
-        shareData[id].presaleTreeRoot = _presaleTreeRoot;
-        shareData[id].presalePrice = _presalePrice;
-        shareData[id].presaleVestingStart = _presaleVestingStart;
-        shareData[id].presaleVestingEnd = _presaleVestingEnd;
-        shareData[id].dutchAuctionBps = _dutchAuctionBps;
-        shareData[id].presale = _presaleBps > 0;
-        shareData[id].dutchAuctionStart = _dutchAuctionStart;
-        shareData[id].dutchAuctionStartPrice = _dutchAuctionStartPrice;
-        shareData[id].dutchAuctionDiscountRate = _dutchAuctionDiscountRate;
-        shareData[id].dutchAuctionVestingStart = _dutchAuctionVestingStart;
-        shareData[id].dutchAuctionVestingEnd = _dutchAuctionVestingEnd;
+        shareData[id].presaleData = _presaleData;
+        shareData[id].dutchAuctionData = _dutchAuctionData;
+        shareData[id].remainingTokens.bondingCurve = _tokensBondingCurve;
+        shareData[id].remainingTokens.dutchAuction = _tokensDutchAuction;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
     }
@@ -268,7 +257,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(
             MerkleProof.verify(
                 _merkleProof,
-                shareData[_id].presaleTreeRoot,
+                shareData[_id].presaleData.treeRoot,
                 keccak256(abi.encode(msg.sender, _amountAllocation))
             ),
             "Invalid proof"
@@ -276,7 +265,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(presaleVestData[_id][msg.sender].bought + _amountToBuy <= _amountAllocation, "More than allocation");
 
         presaleVestData[_id][msg.sender].bought += _amountToBuy; // Get added to tokencount when vesting starts
-        uint256 price = shareData[_id].presalePrice * _amountToBuy;
+        uint256 price = shareData[_id].presaleData.price * _amountToBuy;
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price);
         emit SharesBought(_id, msg.sender, _amountToBuy, price, 0);
     }
@@ -291,14 +280,15 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _maxPrice
     ) external {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
-        uint256 timeElapsed = block.timestamp - shareData[_id].dutchAuctionStart; // Underflows if not started yet
-        uint256 discount = timeElapsed * shareData[_id].dutchAuctionDiscountRate;
+        DutchAuctionData storage data = shareData[_id].dutchAuctionData;
+        uint256 timeElapsed = block.timestamp - data.auctionStart; // Underflows if not started yet
+        uint256 discount = timeElapsed * data.discountRate;
         uint256 price;
         if (discount < price) {
-            price = (shareData[_id].dutchAuctionStartPrice - discount) * _amount;
+            price = (data.startPrice - discount) * _amount;
         }
 
-        // TODO: Check maximum amount
+        shareData[_id].remainingTokens.dutchAuction -= _amount; // Underflows if not enough tokens
 
         require(price <= _maxPrice, "Price too high");
         dutchAuctionVestData[_id][msg.sender].bought += _amount;
@@ -332,6 +322,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[_id].tokenCount += toVest;
         shareData[_id].tokensInCirculation += toVest;
         shareData[_id].tokenCountBondingCurve += toVest;
+        shareData[_id].remainingTokens.bondingCurve += toVest;
     }
 
     /// @notice Vest the presale tokens for a given share ID
@@ -339,8 +330,8 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     function vestPresale(uint256 _id) public {
         _vestTokens(
             _id,
-            shareData[_id].presaleVestingStart,
-            shareData[_id].presaleVestingEnd,
+            shareData[_id].presaleData.vestingStart,
+            shareData[_id].presaleData.vestingEnd,
             presaleVestData[_id][msg.sender]
         );
     }
@@ -350,8 +341,8 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     function vestDutchAuction(uint256 _id) public {
         _vestTokens(
             _id,
-            shareData[_id].dutchAuctionVestingStart,
-            shareData[_id].dutchAuctionVestingEnd,
+            shareData[_id].dutchAuctionData.vestingStart,
+            shareData[_id].dutchAuctionData.vestingEnd,
             dutchAuctionVestData[_id][msg.sender]
         );
     }
@@ -371,6 +362,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(price <= _maxPrice, "Price too high");
         claimHolderFee(_id);
 
+        // TODO: Check max bonding curve tokens
         shareData[_id].tokenCount += _amount;
         shareData[_id].tokenCountBondingCurve += _amount;
         shareData[_id].tokensInCirculation += _amount;
