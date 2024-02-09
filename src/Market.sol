@@ -8,6 +8,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IBondingCurve} from "../interface/IBondingCurve.sol";
 import {Turnstile} from "../interface/Turnstile.sol";
+import {MerkleProof} from "openzeppelin/utils/cryptography/MerkleProof.sol";
 
 contract Market is ERC1155, Ownable2Step, EIP712 {
     /*//////////////////////////////////////////////////////////////
@@ -53,6 +54,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
     /// @notice Stores the data for a given share ID
     mapping(uint256 => ShareData) public shareData;
+
+    /// @notice Stores the number of tokens bought in the presale by a given address
+    mapping(uint256 => mapping(address => uint256)) public presaleBought;
+
+    /// @notice Stores the number of tokens vested in the presale by a given address
+    mapping(uint256 => mapping(address => uint256)) public presaleVested;
 
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) public whitelistedBondingCurves;
@@ -102,6 +109,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     );
     event ShareCreationRestricted(bool isRestricted);
     event ShareOwnerUpdated(uint256 indexed id, address indexed newOwner);
+    event ShareSaleStarted(uint256 indexed id);
 
     modifier onlyShareCreator() {
         require(
@@ -140,7 +148,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _metadataURI URI of the metadata
     /// @param _numTokens Maximum number of tokens that can be minted
     /// @param _presaleBps Percentage (in BPS) of the presale allocation
-    /// @param _preSaleTreeRoot Merkle root of the presale allocation
+    /// @param _presaleTreeRoot Merkle root of the presale allocation
     /// @param _presalePrice Price of the presale
     /// @param _presaleVestingStart Start of the presale vesting period
     /// @param _presaleVestingEnd End of the presale vesting period
@@ -213,6 +221,65 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         );
     }
 
+    /// @notice Ends the presale and starts the normal sale for a given share ID
+    /// @param _id ID of the share
+    function endPresale(uint256 _id) external {
+        require(shareData[_id].owner == msg.sender, "Not owner");
+        require(shareData[_id].presale, "No presale");
+        shareData[_id].presale = false;
+        emit ShareSaleStarted(_id);
+    }
+
+    /// @notice Buy amount of tokens for a given share ID in the presale
+    /// @param _id ID of the share
+    /// @param _amountToBuy Amount of shares to buy
+    /// @param _amountAllocation Amount of tokens allocated to the user
+    /// @param _merkleProof Merkle proof for the allocation
+    function buyPresale(
+        uint256 _id,
+        uint256 _amountToBuy,
+        uint256 _amountAllocation,
+        bytes32[] calldata _merkleProof
+    ) external {
+        require(shareData[_id].presale, "No presale");
+        require(
+            MerkleProof.verify(
+                _merkleProof,
+                shareData[_id].presaleTreeRoot,
+                keccak256(abi.encode(msg.sender, _amountAllocation))
+            ),
+            "Invalid proof"
+        );
+        require(presaleBought[_id][msg.sender] + _amountToBuy <= _amountAllocation, "More than allocation");
+
+        presaleBought[_id][msg.sender] += _amountToBuy; // Get added to tokencount when vesting starts
+        uint256 price = shareData[_id].presalePrice * _amountToBuy;
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price);
+        emit SharesBought(_id, msg.sender, _amountToBuy, price, 0);
+    }
+
+    /// @notice Vest the presale tokens for a given share ID
+    /// @param _id ID of the share
+    function vestPresale(uint256 _id) public {
+        require(presaleBought[_id][msg.sender] > 0, "No allocation");
+        uint256 vestingStart = shareData[_id].presaleVestingStart;
+        uint256 vestingEnd = shareData[_id].presaleVestingEnd;
+        uint256 amount = presaleBought[_id][msg.sender];
+        uint256 vested = presaleVested[_id][msg.sender];
+        if (block.timestamp < vestingStart || amount == vested) return; // We throw no error because this can be called by other functions
+        uint256 vestingDuration = vestingEnd - vestingStart;
+        uint256 timeSinceStart = block.timestamp - vestingStart;
+        uint256 vestedNow = (amount * timeSinceStart) / vestingDuration;
+        if (vestedNow > amount) {
+            vestedNow = amount;
+        }
+        uint256 toVest = vestedNow - vested; // Has to be greater than amount, would have returned otherwise
+        presaleVested[_id][msg.sender] = vestedNow;
+        shareData[_id].tokenCount += toVest;
+        shareData[_id].tokensInCirculation += toVest;
+        shareData[_id].tokenCountBondingCurve += toVest;
+    }
+
     /// @notice Buy amount of tokens for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of shares to buy
@@ -259,14 +326,19 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _id ID of the share
     /// @param _amount Amount of shares to sell
     /// @param _minPrice Minimum price that user wants to receive (for the whole sale)
+    /// @param _autoVest If true, vest will be called automatically
     function sell(
         uint256 _id,
         uint256 _amount,
-        uint256 _minPrice
+        uint256 _minPrice,
+        bool _autoVest
     ) public {
         require(!shareData[_id].presale, "Presale only");
         (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
         require(price >= _minPrice, "Price too low");
+        if (_autoVest) {
+            vestPresale(_id);
+        }
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
         // The user also gets the rewards of his own sale
@@ -286,14 +358,16 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _ids IDs of the shares
     /// @param _amounts Amounts of shares to sell
     /// @param _minPrices Minimum prices that user wants to receive (for the whole sale)
+    /// @param _autoVest If true, vest will be called automatically
     function multiSell(
         uint256[] calldata _ids,
         uint256[] calldata _amounts,
-        uint256[] calldata _minPrices
+        uint256[] calldata _minPrices,
+        bool _autoVest
     ) external {
         require(_ids.length == _amounts.length && _ids.length == _minPrices.length, "Length mismatch");
         for (uint256 i = 0; i < _ids.length; i++) {
-            sell(_ids[i], _amounts[i], _minPrices[i]);
+            sell(_ids[i], _amounts[i], _minPrices[i], _autoVest);
         }
     }
 
@@ -314,7 +388,15 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Convert amount of tokens to NFTs for a given share ID
     /// @param _id ID of the share
     /// @param _amount Amount of tokens to convert. User needs to have this many tokens.
-    function mintNFT(uint256 _id, uint256 _amount) external {
+    /// @param _autoVest If true, vest will be called automatically
+    function mintNFT(
+        uint256 _id,
+        uint256 _amount,
+        bool _autoVest
+    ) external {
+        if (_autoVest) {
+            vestPresale(_id);
+        }
         uint256 fee = getNFTMintingPrice(_id, _amount);
 
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
