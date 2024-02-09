@@ -4,14 +4,12 @@ pragma solidity >=0.8.0;
 import "forge-std/Script.sol";
 import "../src/bonding_curve/LinearBondingCurve.sol";
 import "../src/Market.sol";
-// import "../src/Contract.sol";
+import "../src/test/TestToken.sol";
 
 contract DeploymentScript is Script {
     // https://docs.canto.io/evm-development/contract-addresses
-    address constant NOTE = address(0x4e71A2E537B7f9D9413D3991D37958c0b5e1e503);
     uint256 constant LINEAR_BONDING_CURVE_INCREASE = 1e18;
     address offchainSigner = address(0x29D4B2B80A8de138d8dfDF415666501d0278AEdD);
-    address newOwner = address(0x5c2aeB0F2b70E3896d5cde7Ed02e78961E53FA2c);
 
     function setUp() public {}
 
@@ -19,10 +17,11 @@ contract DeploymentScript is Script {
         string memory seedPhrase = vm.readFile(".secret");
         uint256 privateKey = vm.deriveKey(seedPhrase, 0);
         vm.startBroadcast(privateKey);
-        LinearBondingCurve bondingCurve = LinearBondingCurve(address(0x03BCE3eDEaD608171FBcDaB63961dbba3e811e45));
-        Market market = new Market(NOTE, offchainSigner);
+        TestToken token = TestToken(0xA0E000057430d08269C882940aDC8842DED37eb3);
+        LinearBondingCurve bondingCurve = LinearBondingCurve(0xDEdAB9560614a79B44e4c2b480209C55D5e1d0D0);
+        Market market = new Market(address(token), offchainSigner); // TODO: Define signer
         market.changeBondingCurveAllowed(address(bondingCurve), true);
-        market.transferOwnership(newOwner);
+        market.transferOwnership(address(0x29D4B2B80A8de138d8dfDF415666501d0278AEdD));
         vm.stopBroadcast();
     }
 }
