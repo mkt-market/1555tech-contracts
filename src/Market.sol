@@ -50,16 +50,26 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint40 presaleVestingStart; // Start of the presale vesting period
         uint40 presaleVestingEnd; // End of the presale vesting period
         uint16 dutchAuctionBps; // Percentage (in BPS) of the dutch auction allocation
+        uint40 dutchAuctionStart; // Start of the dutch auction
+        uint256 dutchAuctionStartPrice; // Start price of the dutch auction
+        uint256 dutchAuctionDiscountRate; // Discount rate of the dutch auction (per second)
+        uint256 dutchAuctionVestingStart; // Start of the dutch auction vesting period
+        uint256 dutchAuctionVestingEnd; // End of the dutch auction vesting period
     }
 
     /// @notice Stores the data for a given share ID
     mapping(uint256 => ShareData) public shareData;
 
-    /// @notice Stores the number of tokens bought in the presale by a given address
-    mapping(uint256 => mapping(address => uint256)) public presaleBought;
+    struct VestData {
+        uint256 bought;
+        uint256 vested;
+    }
 
-    /// @notice Stores the number of tokens vested in the presale by a given address
-    mapping(uint256 => mapping(address => uint256)) public presaleVested;
+    /// @notice Stores the vest metadata for the presale
+    mapping(uint256 => mapping(address => VestData)) public presaleVestData;
+
+    /// @notice Stores the vest metadata for the dutch auction
+    mapping(uint256 => mapping(address => VestData)) public dutchAuctionVestData;
 
     /// @notice Bonding curves that can be used for shares
     mapping(address => bool) public whitelistedBondingCurves;
@@ -153,6 +163,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _presaleVestingStart Start of the presale vesting period
     /// @param _presaleVestingEnd End of the presale vesting period
     /// @param _dutchAuctionBps Percentage (in BPS) of the dutch auction allocation
+    /// @param _dutchAuctionStart Start timestamp of the dutch auction
+    /// @param _dutchAuctionStartPrice Start price of the dutch auction
+    /// @param _dutchAuctionDiscountRate Discount rate of the dutch auction (per second)
     function createNewShare(
         string memory _shareName,
         address _bondingCurve,
@@ -163,7 +176,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _presalePrice,
         uint40 _presaleVestingStart,
         uint40 _presaleVestingEnd,
-        uint16 _dutchAuctionBps
+        uint16 _dutchAuctionBps,
+        uint40 _dutchAuctionStart,
+        uint256 _dutchAuctionStartPrice,
+        uint256 _dutchAuctionDiscountRate,
+        uint256 _dutchAuctionVestingStart,
+        uint256 _dutchAuctionVestingEnd
     ) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
@@ -182,6 +200,11 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].presaleVestingEnd = _presaleVestingEnd;
         shareData[id].dutchAuctionBps = _dutchAuctionBps;
         shareData[id].presale = _presaleBps > 0;
+        shareData[id].dutchAuctionStart = _dutchAuctionStart;
+        shareData[id].dutchAuctionStartPrice = _dutchAuctionStartPrice;
+        shareData[id].dutchAuctionDiscountRate = _dutchAuctionDiscountRate;
+        shareData[id].dutchAuctionVestingStart = _dutchAuctionVestingStart;
+        shareData[id].dutchAuctionVestingEnd = _dutchAuctionVestingEnd;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
     }
@@ -250,34 +273,87 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             ),
             "Invalid proof"
         );
-        require(presaleBought[_id][msg.sender] + _amountToBuy <= _amountAllocation, "More than allocation");
+        require(presaleVestData[_id][msg.sender].bought + _amountToBuy <= _amountAllocation, "More than allocation");
 
-        presaleBought[_id][msg.sender] += _amountToBuy; // Get added to tokencount when vesting starts
+        presaleVestData[_id][msg.sender].bought += _amountToBuy; // Get added to tokencount when vesting starts
         uint256 price = shareData[_id].presalePrice * _amountToBuy;
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price);
         emit SharesBought(_id, msg.sender, _amountToBuy, price, 0);
     }
 
-    /// @notice Vest the presale tokens for a given share ID
+    /// @notice Buy amount of tokens for a given share ID in the dutch auction
     /// @param _id ID of the share
-    function vestPresale(uint256 _id) public {
-        require(presaleBought[_id][msg.sender] > 0, "No allocation");
-        uint256 vestingStart = shareData[_id].presaleVestingStart;
-        uint256 vestingEnd = shareData[_id].presaleVestingEnd;
-        uint256 amount = presaleBought[_id][msg.sender];
-        uint256 vested = presaleVested[_id][msg.sender];
-        if (block.timestamp < vestingStart || amount == vested) return; // We throw no error because this can be called by other functions
+    /// @param _amount Amount of shares to buy
+    /// @param _maxPrice Maximum price that user is willing to buy (for the whole sale)
+    function buyDutch(
+        uint256 _id,
+        uint256 _amount,
+        uint256 _maxPrice
+    ) external {
+        require(shareData[_id].creator != msg.sender, "Creator cannot buy");
+        uint256 timeElapsed = block.timestamp - shareData[_id].dutchAuctionStart; // Underflows if not started yet
+        uint256 discount = timeElapsed * shareData[_id].dutchAuctionDiscountRate;
+        uint256 price;
+        if (discount < price) {
+            price = (shareData[_id].dutchAuctionStartPrice - discount) * _amount;
+        }
+
+        // TODO: Check maximum amount
+
+        require(price <= _maxPrice, "Price too high");
+        dutchAuctionVestData[_id][msg.sender].bought += _amount;
+
+        SafeERC20.safeTransferFrom(token, msg.sender, address(this), price);
+        emit SharesBought(_id, msg.sender, _amount, price, 0);
+    }
+
+    /// @notice Vest the tokens for a given share ID
+    /// @param _id ID of the share
+    /// @param _vestingStart Start of the vesting period
+    /// @param _vestingEnd End of the vesting period
+    /// @param _vestData Vesting data for the user
+    function _vestTokens(
+        uint256 _id,
+        uint256 vestingStart,
+        uint256 vestingEnd,
+        VestData storage vestData
+    ) internal {
+        uint256 amount = vestData.bought;
+        uint256 vested = vestData.vested;
+        if (block.timestamp < vestingStart || amount == vested) return;
         uint256 vestingDuration = vestingEnd - vestingStart;
         uint256 timeSinceStart = block.timestamp - vestingStart;
         uint256 vestedNow = (amount * timeSinceStart) / vestingDuration;
         if (vestedNow > amount) {
             vestedNow = amount;
         }
-        uint256 toVest = vestedNow - vested; // Has to be greater than amount, would have returned otherwise
-        presaleVested[_id][msg.sender] = vestedNow;
+        uint256 toVest = vestedNow - vested;
+        vestData.vested = vestedNow;
         shareData[_id].tokenCount += toVest;
         shareData[_id].tokensInCirculation += toVest;
         shareData[_id].tokenCountBondingCurve += toVest;
+    }
+
+    /// @notice Vest the presale tokens for a given share ID
+    /// @param _id ID of the share
+    function vestPresale(uint256 _id) public {
+        _vestTokens(
+            _id,
+            shareData[_id].presaleVestingStart,
+            shareData[_id].presaleVestingEnd,
+            presaleVestData[_id][msg.sender]
+        );
+    }
+
+    /// @notice Vest the dutch auction tokens for a given share ID
+    /// @param _id ID of the share
+    function vestDutchAuction(uint256 _id) public {
+        _vestTokens(
+            _id,
+            shareData[_id].dutchAuctionVestingStart,
+            shareData[_id].dutchAuctionVestingEnd,
+            dutchAuctionVestData[_id][msg.sender]
+        );
     }
 
     /// @notice Buy amount of tokens for a given share ID
@@ -338,6 +414,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(price >= _minPrice, "Price too low");
         if (_autoVest) {
             vestPresale(_id);
+            vestDutchAuction(_id);
         }
         // Split the fee among holder, creator and platform
         _splitFees(_id, fee, shareData[_id].tokensInCirculation);
@@ -396,6 +473,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     ) external {
         if (_autoVest) {
             vestPresale(_id);
+            vestDutchAuction(_id);
         }
         uint256 fee = getNFTMintingPrice(_id, _amount);
 
