@@ -41,6 +41,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
         uint256 tokenCountBondingCurve; // Number of tokens in the bonding curve
+        uint256 numTokens; // Maximum number of tokens that can be minted
+        uint16 presaleBps; // Percentage (in BPS) of the presale allocation
+        bool presale; // If true, no bonding curve buys are possible, only pre sale allocation and dutch auction
+        bytes32 presaleTreeRoot; // Merkle root of the presale allocation
+        uint256 presalePrice; // Price of the presale
+        uint40 presaleVestingStart; // Start of the presale vesting period
+        uint40 presaleVestingEnd; // End of the presale vesting period
+        uint16 dutchAuctionBps; // Percentage (in BPS) of the dutch auction allocation
     }
 
     /// @notice Stores the data for a given share ID
@@ -130,10 +138,24 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
     /// @param _metadataURI URI of the metadata
+    /// @param _numTokens Maximum number of tokens that can be minted
+    /// @param _presaleBps Percentage (in BPS) of the presale allocation
+    /// @param _preSaleTreeRoot Merkle root of the presale allocation
+    /// @param _presalePrice Price of the presale
+    /// @param _presaleVestingStart Start of the presale vesting period
+    /// @param _presaleVestingEnd End of the presale vesting period
+    /// @param _dutchAuctionBps Percentage (in BPS) of the dutch auction allocation
     function createNewShare(
         string memory _shareName,
         address _bondingCurve,
-        string memory _metadataURI
+        string memory _metadataURI,
+        uint256 _numTokens,
+        uint16 _presaleBps,
+        bytes32 _presaleTreeRoot,
+        uint256 _presalePrice,
+        uint40 _presaleVestingStart,
+        uint40 _presaleVestingEnd,
+        uint16 _dutchAuctionBps
     ) external onlyShareCreator returns (uint256 id) {
         require(whitelistedBondingCurves[_bondingCurve], "Bonding curve not whitelisted");
         require(shareIDs[_shareName] == 0, "Share already exists");
@@ -144,6 +166,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].creator = msg.sender;
         shareData[id].owner = msg.sender;
         shareData[id].metadataURI = _metadataURI;
+        shareData[id].numTokens = _numTokens;
+        shareData[id].presaleBps = _presaleBps;
+        shareData[id].presaleTreeRoot = _presaleTreeRoot;
+        shareData[id].presalePrice = _presalePrice;
+        shareData[id].presaleVestingStart = _presaleVestingStart;
+        shareData[id].presaleVestingEnd = _presaleVestingEnd;
+        shareData[id].dutchAuctionBps = _dutchAuctionBps;
+        shareData[id].presale = _presaleBps > 0;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
     }
@@ -192,6 +222,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _amount,
         uint256 _maxPrice
     ) public {
+        require(!shareData[_id].presale, "Presale only");
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
@@ -233,6 +264,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _amount,
         uint256 _minPrice
     ) public {
+        require(!shareData[_id].presale, "Presale only");
         (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
         require(price >= _minPrice, "Price too low");
         // Split the fee among holder, creator and platform
