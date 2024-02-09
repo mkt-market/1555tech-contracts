@@ -1,12 +1,12 @@
 {
-  "name": "atrium-bondingcurve-1155",
+  "name": "1155tech",
   "author": "mkt.market",
   "version": "1.0.0",
-  "description": "Atribum Bondingcurve ERC1155 Tokens",
-  "homepage": "https://github.com/mkt-market/atrium-bondingcurve-1155#readme",
+  "description": "1155tech contracts",
+  "homepage": "https://github.com/mkt-market/1155tech-contracts#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mkt-market/atrium-bondingcurve-1155.git"
+    "url": "git+https://github.com/mkt-market/1155tech-contracts.git"
   },
   "scripts": {
     "prettier": "prettier --write 'src/**/*.sol'",
