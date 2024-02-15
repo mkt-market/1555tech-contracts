@@ -53,6 +53,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // Presale tokens are implicitly given by the allocation counts
     }
 
+    enum MarketPhase {
+        PRESALE,
+        DUTCH_AUCTION,
+        BONDING_CURVE
+    }
+
     struct ShareData {
         uint256 tokenCount; // Number of outstanding tokens
         uint256 tokensInCirculation; // Number of outstanding tokens - tokens that are minted as NFT, i.e. the number of tokens that receive fees
@@ -63,7 +69,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
         uint256 tokenCountBondingCurve; // Number of tokens in the bonding curve
-        bool presale; // If true, no bonding curve buys are possible, only pre sale allocation and dutch auction
+        MarketPhase phase; // If true, no bonding curve buys are possible, only pre sale allocation and dutch auction
         PresaleData presaleData; // Data for the presale
         DutchAuctionData dutchAuctionData; // Data for the dutch auction
         RemainingTokens remainingTokens; // Remaining tokens for the presale and dutch auction
@@ -131,7 +137,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     );
     event ShareCreationRestricted(bool isRestricted);
     event ShareOwnerUpdated(uint256 indexed id, address indexed newOwner);
-    event ShareSaleStarted(uint256 indexed id);
+    event PreSaleStarted(uint256 indexed id);
+    event DutchAuctionStarted(uint256 indexed id);
+    event BondingCurveStarted(uint256 indexed id);
 
     modifier onlyShareCreator() {
         require(
@@ -196,6 +204,16 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].remainingTokens.dutchAuction = _tokensDutchAuction;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
+        if (_presaleData.treeRoot != bytes32(0)) {
+            shareData[id].phase = MarketPhase.PRESALE;
+            emit PreSaleStarted(id);
+        } else if (_tokensDutchAuction > 0) {
+            shareData[id].phase = MarketPhase.DUTCH_AUCTION;
+            emit DutchAuctionStarted(id);
+        } else {
+            shareData[id].phase = MarketPhase.BONDING_CURVE;
+            emit BondingCurveStarted(id);
+        }
     }
 
     /// @notice Returns the ERC1155 metadata URI for a given share ID
@@ -237,9 +255,21 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _id ID of the share
     function endPresale(uint256 _id) external {
         require(shareData[_id].owner == msg.sender, "Not owner");
-        require(shareData[_id].presale, "No presale");
-        shareData[_id].presale = false;
-        emit ShareSaleStarted(_id);
+        require(shareData[_id].phase == MarketPhase.PRESALE, "No presale");
+        if (shareData[_id].remainingTokens.dutchAuction > 0) {
+            shareData[_id].phase = MarketPhase.DUTCH_AUCTION;
+            emit DutchAuctionStarted(_id);
+        } else {
+            shareData[_id].phase = MarketPhase.BONDING_CURVE;
+            emit BondingCurveStarted(_id);
+        }
+    }
+
+    function endDutchAuction(uint256 _id) external {
+        require(shareData[_id].owner == msg.sender || shareData[_id].remainingTokens.dutchAuction == 0, "Not allowed"); // When sale is over, anyone can start
+        require(shareData[_id].phase == MarketPhase.DUTCH_AUCTION, "No dutch auction");
+        shareData[_id].phase = MarketPhase.BONDING_CURVE;
+        emit BondingCurveStarted(_id);
     }
 
     /// @notice Buy amount of tokens for a given share ID in the presale
@@ -253,7 +283,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _amountAllocation,
         bytes32[] calldata _merkleProof
     ) external {
-        require(shareData[_id].presale, "No presale");
+        require(shareData[_id].phase == MarketPhase.PRESALE, "No presale");
         require(
             MerkleProof.verify(
                 _merkleProof,
@@ -280,6 +310,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _maxPrice
     ) external {
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
+        require(shareData[_id].phase == MarketPhase.DUTCH_AUCTION, "No dutch auction");
         DutchAuctionData storage data = shareData[_id].dutchAuctionData;
         uint256 timeElapsed = block.timestamp - data.auctionStart; // Underflows if not started yet
         uint256 discount = timeElapsed * data.discountRate;
@@ -301,18 +332,18 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _id ID of the share
     /// @param _vestingStart Start of the vesting period
     /// @param _vestingEnd End of the vesting period
-    /// @param _vestData Vesting data for the user
+    /// @param vestData Vesting data for the user
     function _vestTokens(
         uint256 _id,
-        uint256 vestingStart,
-        uint256 vestingEnd,
+        uint256 _vestingStart,
+        uint256 _vestingEnd,
         VestData storage vestData
     ) internal {
         uint256 amount = vestData.bought;
         uint256 vested = vestData.vested;
-        if (block.timestamp < vestingStart || amount == vested) return;
-        uint256 vestingDuration = vestingEnd - vestingStart;
-        uint256 timeSinceStart = block.timestamp - vestingStart;
+        if (block.timestamp < _vestingStart || amount == vested) return;
+        uint256 vestingDuration = _vestingEnd - _vestingStart;
+        uint256 timeSinceStart = block.timestamp - _vestingStart;
         uint256 vestedNow = (amount * timeSinceStart) / vestingDuration;
         if (vestedNow > amount) {
             vestedNow = amount;
@@ -356,7 +387,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _amount,
         uint256 _maxPrice
     ) public {
-        require(!shareData[_id].presale, "Presale only");
+        require(shareData[_id].phase == MarketPhase.BONDING_CURVE, "No bonding curve");
         require(shareData[_id].creator != msg.sender, "Creator cannot buy");
         (uint256 price, uint256 fee) = getBuyPrice(_id, _amount); // Reverts for non-existing ID
         require(price <= _maxPrice, "Price too high");
@@ -364,7 +395,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
         // TODO: Check max bonding curve tokens
         shareData[_id].tokenCount += _amount;
-        shareData[_id].tokenCountBondingCurve += _amount;
+        shareData[_id].tokenCountBondingCurve += _amount; // TODO: Do we need this?
         shareData[_id].tokensInCirculation += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
@@ -401,7 +432,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 _minPrice,
         bool _autoVest
     ) public {
-        require(!shareData[_id].presale, "Presale only");
+        require(shareData[_id].phase == MarketPhase.BONDING_CURVE, "No bonding curve");
         (uint256 price, uint256 fee) = getSellPrice(_id, _amount);
         require(price >= _minPrice, "Price too low");
         if (_autoVest) {
