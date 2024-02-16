@@ -346,6 +346,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 amount = vestData.bought;
         uint256 vested = vestData.vested;
         if (block.timestamp < _vestingStart || amount == vested) return;
+        claimHolderFee(_id); // If user already holds tokens, need to claim first
         uint256 vestingDuration = _vestingEnd - _vestingStart;
         uint256 timeSinceStart = block.timestamp - _vestingStart;
         uint256 vestedNow = (amount * timeSinceStart) / vestingDuration;
@@ -397,9 +398,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(price <= _maxPrice, "Price too high");
         claimHolderFee(_id);
 
-        // TODO: Check max bonding curve tokens
+        shareData[_id].remainingTokens.bondingCurve -= _amount; // Underflows if not enough tokens
         shareData[_id].tokenCount += _amount;
-        shareData[_id].tokenCountBondingCurve += _amount; // TODO: Do we need this?
+        shareData[_id].tokenCountBondingCurve += _amount; // TODO: Do we need this? Probably not with remainingTokens
         shareData[_id].tokensInCirculation += _amount;
         tokensByAddress[_id][msg.sender] += _amount;
 
@@ -448,6 +449,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // The user also gets the rewards of his own sale
         claimHolderFee(_id);
 
+        shareData[_id].remainingTokens.bondingCurve += _amount; // Underflows if not enough tokens
         shareData[_id].tokenCount -= _amount;
         shareData[_id].tokenCountBondingCurve -= _amount;
         shareData[_id].tokensInCirculation -= _amount;
