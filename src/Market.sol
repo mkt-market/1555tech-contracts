@@ -26,6 +26,12 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
                                  STATE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Percentage of the artist revenue that goes to the platform in the presale / dutch auction. Can be changed
+    uint256 public presaleDutchPlatformFeeBPS = 3_300; // 33%
+
+    /// @notice Percentage of the overall revenue from the presale / dutch auction that goes to the bonding curve. Can be changed, 10% minimum
+    uint256 public presaleDutchBondingCurveBPS = 2_000; // 20%
+
     /// @notice Number of shares created
     uint256 public shareCount;
 
@@ -643,5 +649,18 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _newSigner New address to use as the offchain signer
     function changeOffchainSigner(address _newSigner) external onlyOwner {
         offchainSigner = _newSigner;
+    }
+
+    /// @notice Changes the platform fee for the presale / dutch auction
+    /// @param _newFee New fee in basis points
+    function setPresaleDutchPlatformFeeBPS(uint256 _newFee) external onlyOwner {
+        presaleDutchPlatformFeeBPS = _newFee;
+    }
+
+    /// @notice Changes the bonding curve percentage for the presale / dutch auction
+    /// @param _newBps New percentage in basis points
+    function setPresaleDutchBondingCurveBPS(uint256 _newBps) external onlyOwner {
+        require(_newBps >= 10_000 && _newBps <= 100_000, "Minimum 10%");
+        presaleDutchBondingCurveBPS = _newBps;
     }
 }
