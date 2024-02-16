@@ -74,6 +74,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         address creator; // Creator of the share
         address owner; // Address that can claim rewards
         string metadataURI; // URI of the metadata
+        uint256 moneyBondingCurve; // Money in the bonding curve
         uint256 tokenCountBondingCurve; // Number of tokens in the bonding curve
         MarketPhase phase; // If true, no bonding curve buys are possible, only pre sale allocation and dutch auction
         PresaleData presaleData; // Data for the presale
@@ -333,6 +334,8 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
 
         require(price <= _maxPrice, "Price too high");
         dutchAuctionVestData[_id][msg.sender].bought += _amount;
+
+        _splitPricePresaleDutch(_id, price);
 
         SafeERC20.safeTransferFrom(token, msg.sender, address(this), price);
         emit SharesBought(_id, msg.sender, _amount, price, 0);
@@ -617,6 +620,19 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             // If there are no tokens in circulation, the fee goes to the platform
             platformFee += shareHolderFee;
         }
+        platformPool += platformFee;
+    }
+
+    /// @notice Splits the price for a presale / dutch auction buy between the platform, bonding curve and artist
+    /// @param _id ID of the share
+    /// @param _price Total price of the buy
+    function _splitPricePresaleDutch(uint256 _id, uint256 _price) internal {
+        uint256 bondingCurveAmount = (_price * presaleDutchBondingCurveBPS) / 10_000;
+        shareData[_id].moneyBondingCurve += bondingCurveAmount;
+        uint256 artistPlatformAmount = _price - bondingCurveAmount;
+        uint256 platformFee = (artistPlatformAmount * presaleDutchPlatformFeeBPS) / 10_000;
+        uint256 artistAmount = artistPlatformAmount - platformFee;
+        shareData[_id].shareCreatorPool += artistAmount;
         platformPool += platformFee;
     }
 
