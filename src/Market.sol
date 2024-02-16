@@ -50,7 +50,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     struct RemainingTokens {
         uint256 bondingCurve;
         uint256 dutchAuction;
-        // Presale tokens are implicitly given by the allocation counts
+        uint256 presale;
     }
 
     enum MarketPhase {
@@ -176,6 +176,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @param _shareName Name of the share
     /// @param _bondingCurve Address of the bonding curve, has to be whitelisted
     /// @param _metadataURI URI of the metadata
+    /// @param _tokensDutchAuction Number of tokens for the presale. Technically not needed (given by merkle tree), but recorded for third parties
     /// @param _tokensDutchAuction Number of tokens for the dutch auction
     /// @param _tokensBondingCurve Number of tokens for the bonding curve
     /// @param _presaleData Data for the presale
@@ -184,6 +185,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         string memory _shareName,
         address _bondingCurve,
         string memory _metadataURI,
+        uint256 _tokensPreSale,
         uint256 _tokensDutchAuction,
         uint256 _tokensBondingCurve,
         PresaleData memory _presaleData,
@@ -202,6 +204,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         shareData[id].dutchAuctionData = _dutchAuctionData;
         shareData[id].remainingTokens.bondingCurve = _tokensBondingCurve;
         shareData[id].remainingTokens.dutchAuction = _tokensDutchAuction;
+        shareData[id].remainingTokens.presale = _tokensPreSale;
         emit ShareCreated(id, _shareName, _bondingCurve, msg.sender);
         emit URI(_metadataURI, id); // Emit ERC1155 URI event
         if (_presaleData.treeRoot != bytes32(0)) {
@@ -254,7 +257,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
     /// @notice Ends the presale and starts the normal sale for a given share ID
     /// @param _id ID of the share
     function endPresale(uint256 _id) external {
-        require(shareData[_id].owner == msg.sender, "Not owner");
+        require(shareData[_id].owner == msg.sender || shareData[_id].remainingTokens.presale == 0, "Not allowed");
         require(shareData[_id].phase == MarketPhase.PRESALE, "No presale");
         if (shareData[_id].remainingTokens.dutchAuction > 0) {
             shareData[_id].phase = MarketPhase.DUTCH_AUCTION;
@@ -293,6 +296,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             "Invalid proof"
         );
         require(presaleVestData[_id][msg.sender].bought + _amountToBuy <= _amountAllocation, "More than allocation");
+        shareData[_id].remainingTokens.presale -= _amountToBuy; // Underflows if not enough tokens
 
         presaleVestData[_id][msg.sender].bought += _amountToBuy; // Get added to tokencount when vesting starts
         uint256 price = shareData[_id].presaleData.price * _amountToBuy;
