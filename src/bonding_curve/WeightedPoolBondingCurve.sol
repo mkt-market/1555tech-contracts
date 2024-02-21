@@ -12,14 +12,19 @@ contract WeightedPoolBondingCurve is IBondingCurve {
     }
 
     function getPriceAndFee(
-        uint256 shareCount,
         uint256 shareCountBondingCurve,
+        uint256 remainingShareCountBondingCurve,
         uint256 amount
     ) external view override returns (uint256 price, uint256 fee) {
         // outputPrice = balance_token[market] * (  1 - ( shareCount / shareCount + amount) ^ (weight / (1 - weight)  )
-        price =
-            shareCountBondingCurve *
-            (1e18 - ((shareCount * 1e18) / (shareCount + amount))**(weight / (10_000 - weight)));
+        uint256 shareCount = shareCountBondingCurve + remainingShareCountBondingCurve;
+        uint256 startingPrice = (shareCount * 1e18) /
+            remainingShareCountBondingCurve**(weight / (10_000 - weight)) -
+            1e18;
+        uint256 endPrice = (shareCount * 1e18) /
+            (remainingShareCountBondingCurve - amount)**(weight / (10_000 - weight)) -
+            1e18;
+        price = endPrice - startingPrice;
         fee = (getFee(shareCount) * price) / 1e18;
     }
 

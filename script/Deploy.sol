@@ -2,7 +2,6 @@
 pragma solidity >=0.8.0;
 
 import "forge-std/Script.sol";
-import "../src/bonding_curve/LinearBondingCurve.sol";
 import "../src/Market.sol";
 // import "../src/Contract.sol";
 
@@ -16,13 +15,13 @@ contract DeploymentScript is Script {
     function setUp() public {}
 
     function run() public {
-        string memory seedPhrase = vm.readFile(".secret");
-        uint256 privateKey = vm.deriveKey(seedPhrase, 0);
-        vm.startBroadcast(privateKey);
-        LinearBondingCurve bondingCurve = LinearBondingCurve(address(0x03BCE3eDEaD608171FBcDaB63961dbba3e811e45));
-        Market market = new Market(NOTE, offchainSigner);
-        market.changeBondingCurveAllowed(address(bondingCurve), true);
-        market.transferOwnership(newOwner);
-        vm.stopBroadcast();
+        // string memory seedPhrase = vm.readFile(".secret");
+        // uint256 privateKey = vm.deriveKey(seedPhrase, 0);
+        // vm.startBroadcast(privateKey);
+        // LinearBondingCurve bondingCurve = LinearBondingCurve(address(0x03BCE3eDEaD608171FBcDaB63961dbba3e811e45));
+        // Market market = new Market(NOTE, offchainSigner);
+        // market.changeBondingCurveAllowed(address(bondingCurve), true);
+        // market.transferOwnership(newOwner);
+        // vm.stopBroadcast();
     }
 }

@@ -2,7 +2,6 @@
 pragma solidity >=0.8.0;
 
 import "forge-std/Script.sol";
-import "../src/bonding_curve/LinearBondingCurve.sol";
 import "../src/Market.sol";
 import "../src/test/TestToken.sol";
 

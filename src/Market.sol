@@ -240,11 +240,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // If id does not exist, this will return address(0), causing a revert in the next line
         ShareData storage share = shareData[_id];
         address bondingCurve = share.bondingCurve;
-        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(
-            share.tokenCount + 1,
+        (uint256 priceMultiplier, uint256 feeMultiplier) = IBondingCurve(bondingCurve).getPriceAndFee(
             share.tokenCountBondingCurve + 1,
+            share.remainingTokens.bondingCurve + 1,
             _amount
         );
+        uint256 moneyInBondingCurve = share.moneyBondingCurve;
+        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1;
+        price = (priceMultiplier * moneyInBondingCurve) / 1e18;
     }
 
     /// @notice Returns the price and fee for selling a given number of shares.
@@ -254,11 +257,14 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         // If id does not exist, this will return address(0), causing a revert in the next line
         ShareData storage share = shareData[_id];
         address bondingCurve = share.bondingCurve;
-        (price, fee) = IBondingCurve(bondingCurve).getPriceAndFee(
-            share.tokenCount - _amount + 1,
+        (uint256 priceMultiplier, uint256 feeMultiplier) = IBondingCurve(bondingCurve).getPriceAndFee(
             share.tokenCountBondingCurve - _amount + 1,
+            share.remainingTokens.bondingCurve + _amount + 1,
             _amount
         );
+        uint256 moneyInBondingCurve = share.moneyBondingCurve;
+        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1;
+        price = (priceMultiplier * moneyInBondingCurve) / 1e18; // TODO: Test
     }
 
     /// @notice Ends the presale and starts the normal sale for a given share ID
