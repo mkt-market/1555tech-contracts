@@ -274,6 +274,7 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         require(shareData[_id].phase == MarketPhase.PRESALE, "No presale");
         if (shareData[_id].remainingTokens.dutchAuction > 0) {
             shareData[_id].phase = MarketPhase.DUTCH_AUCTION;
+            shareData[_id].dutchAuctionData.auctionStart = uint40(block.timestamp);
             emit DutchAuctionStarted(_id);
         } else {
             shareData[_id].phase = MarketPhase.BONDING_CURVE;
