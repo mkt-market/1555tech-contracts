@@ -246,8 +246,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             _amount
         );
         uint256 moneyInBondingCurve = share.moneyBondingCurve;
-        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1;
+        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1e18;
         price = (priceMultiplier * moneyInBondingCurve) / 1e18;
+        fee = (feeMultiplier * moneyInBondingCurve) / 1e18;
     }
 
     /// @notice Returns the price and fee for selling a given number of shares.
@@ -263,8 +264,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
             _amount
         );
         uint256 moneyInBondingCurve = share.moneyBondingCurve;
-        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1;
-        price = (priceMultiplier * moneyInBondingCurve) / 1e18; // TODO: Test
+        if (moneyInBondingCurve == 0) moneyInBondingCurve = 1e18;
+        price = (priceMultiplier * moneyInBondingCurve) / 1e18;
+        fee = (feeMultiplier * moneyInBondingCurve) / 1e18;
     }
 
     /// @notice Ends the presale and starts the normal sale for a given share ID
@@ -333,8 +335,9 @@ contract Market is ERC1155, Ownable2Step, EIP712 {
         uint256 timeElapsed = block.timestamp - data.auctionStart; // Underflows if not started yet
         uint256 discount = timeElapsed * data.discountRate;
         uint256 price;
-        if (discount < price) {
-            price = (data.startPrice - discount) * _amount;
+        uint256 startingPrice = data.startPrice;
+        if (discount < startingPrice) {
+            price = (startingPrice - discount) * _amount;
         }
 
         shareData[_id].remainingTokens.dutchAuction -= _amount; // Underflows if not enough tokens

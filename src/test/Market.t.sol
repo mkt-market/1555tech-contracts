@@ -25,7 +25,7 @@ contract MarketTest is Test {
 
     function setUp() public {
         bondingCurve = new WeightedPoolBondingCurve(weight);
-        token = new MockERC20("Mock Token", "MTK", 1e18);
+        token = new MockERC20("Mock Token", "MTK", 1000e18);
         market = new Market(address(token), address(this));
         bob = address(1);
         alice = address(2);
@@ -102,6 +102,73 @@ contract MarketTest is Test {
             dutchAuctionData
         );
         assertEq(market.shareIDs("Test Share"), 1);
+    }
+
+    function testDutchBuy() public {
+        testCreateNewShare();
+        token.approve(address(market), 10e18);
+        vm.prank(bob);
+        market.endPresale(1);
+        market.buyDutch(1, 1, 10e18);
+        assertEq(token.balanceOf(address(market)), 10e18);
+    }
+
+    function testBondingCurveBuyDuringPresale() public {
+        testCreateNewShare();
+        vm.expectRevert("No bonding curve");
+        market.buy(1, 1, 1e18);
+    }
+
+    function testDutchBuyDuringPresale() public {
+        testCreateNewShare();
+        vm.expectRevert("No dutch auction");
+        market.buyDutch(1, 1, 1e18);
+    }
+
+    function testBondingCurveBuy() public {
+        testCreateNewShare();
+        token.approve(address(market), 10e18);
+        vm.startPrank(bob);
+        market.endPresale(1);
+        market.endDutchAuction(1);
+        vm.stopPrank();
+        market.buy(1, 1, 3e18);
+        assertEq(token.balanceOf(address(market)), 5024875621890548 + 502487562189054);
+    }
+
+    function testGetBuyPrice() public {
+        testCreateNewShare();
+        token.approve(address(market), 10e18);
+        vm.startPrank(bob);
+        market.endPresale(1);
+        market.endDutchAuction(1);
+        vm.stopPrank();
+        (uint256 price, uint256 fee) = market.getBuyPrice(1, 1);
+        assertEq(price, 5024875621890548);
+        assertEq(fee, 502487562189054);
+    }
+
+    function testGetSellPrice() public {
+        testBondingCurveBuy();
+        (uint256 price, uint256 fee) = market.getSellPrice(1, 1);
+        assertEq(price, 5024875621890548);
+        assertEq(fee, 502487562189054);
+    }
+
+    function testEndPresaleNonOwner() public {
+        testCreateNewShare();
+        vm.prank(alice);
+        vm.expectRevert("Not allowed");
+        market.endPresale(1);
+    }
+
+    function testEndDutchNonOwner() public {
+        testCreateNewShare();
+        vm.prank(bob);
+        market.endPresale(1);
+        vm.prank(alice);
+        vm.expectRevert("Not allowed");
+        market.endDutchAuction(1);
     }
 
     // function testGetBuyPrice() public {
